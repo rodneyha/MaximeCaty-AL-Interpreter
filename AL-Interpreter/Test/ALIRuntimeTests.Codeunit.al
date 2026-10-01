@@ -2488,5 +2488,28 @@ codeunit 51132 "ALI Runtime Tests"
             RunInt('var g: Integer; procedure P(): Integer begin SelectLatestVersion; Commit; ClearLastError; SelectLatestVersion(); g := 1; exit(g); end;'),
             'a bare 0-arg builtin call used as a statement is compiled and executed, not dropped');
     end;
+
+
+    [Test]
+    procedure T90_IntImmediateMulDivMod()
+    var
+        Result: Codeunit "ALI Exec Result";
+    begin
+        // * div mod with a literal operand fold into MUL_I_IMM / DIV_I_IMM / MOD_I_IMM; a left
+        // literal folds for * only (div/mod do not commute).
+        Assert.AreEqual(Mnemonics('procedure P(): Integer var h: Integer; begin h := h * 31; exit(h); end;'),
+            Mnemonics('procedure P(): Integer var h: Integer; begin h := 31 * h; exit(h); end;'),
+            'left literal folds like right literal for *');
+        Assert.IsTrue(StrPos(Mnemonics('procedure P(): Integer var h: Integer; begin h := (h * 31 + 7) mod 1000003; exit(h div 2); end;'),
+            'MUL_I_IMM') > 0, 'MUL_I_IMM emitted');
+        Assert.IsTrue(StrPos(Mnemonics('procedure P(): Integer var h: Integer; begin h := h mod 7; exit(h); end;'), 'MOD_I_IMM') > 0, 'MOD_I_IMM emitted');
+        Assert.IsTrue(StrPos(Mnemonics('procedure P(): Integer var h: Integer; begin h := h div 7; exit(h); end;'), 'DIV_I_IMM') > 0, 'DIV_I_IMM emitted');
+        Assert.AreEqual(-42, RunInt('procedure P(): Integer var h: Integer; begin h := -6; exit(h * 7); end;'), 'mul');
+        Assert.AreEqual(-3, RunInt('procedure P(): Integer var h: Integer; begin h := -20; exit(h div 6); end;'), 'div truncates toward zero');
+        Assert.AreEqual(-2, RunInt('procedure P(): Integer var h: Integer; begin h := -20; exit(h mod 6); end;'), 'mod keeps the dividend sign');
+        Assert.AreEqual(3, RunInt('procedure P(): Integer var h: Integer; begin h := 20; exit(60 div h); end;'), 'left literal div stays unfolded and correct');
+        Assert.AreEqual(8937, RunInt('procedure P(): Integer var h: Integer; i: Integer; begin for i := 1 to 3 do h := (h * 31 + 9) mod 1000003; exit(h); end;'), 'HashText-shaped loop: 9, 288, 8937');
+        RunExpectFail('procedure P(): Integer var h: Integer; begin h := 5; exit(h div 0); end;', Result);
+    end;
 }
 #endif

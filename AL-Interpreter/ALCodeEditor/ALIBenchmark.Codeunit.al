@@ -84,6 +84,10 @@ codeunit 51129 "ALI Benchmark"
         Sb.AppendLine(StrSubstNo('ALI: %1 ms (+ compile %2 ms, optimize %3)', AliMs, CompileMs, Optimize));
         if NativeMs > 0 then
             Sb.AppendLine(StrSubstNo('ALI / native: x%1', Round(AliMs / NativeMs, 0.1)));
+        // The budget counter ticks once per loop iteration and per interpreted call.
+        if MaxRecords > 0 then
+            Sb.AppendLine(StrSubstNo('Loop iterations + calls: %1 (%2 per row)',
+                Result.ExecutedStatements(), Round(Result.ExecutedStatements() / MaxRecords, 1)));
         if Result.ResultText() = Format(NativeChecksum) then
             Sb.AppendLine(StrSubstNo('Checksum match: %1', NativeChecksum))
         else

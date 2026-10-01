@@ -2,7 +2,7 @@
   "id": "999ed8e4-0123-a400-b17c-42e072139999",
   "name": "AL Interpreter",
   "publisher": "Maxime Caty",
-  "version": "1.0.0.0",
+  "version": "2.0.0.0",
   "brief": "Offer live AL code editor and interpreter integrated in Business Central",
   "description": "Offer live AL code editor and interpreter integrated in Business Central",
   "privacyStatement": "",
@@ -10,9 +10,7 @@
   "help": "https://github.com/MaximeCaty/AL-Company-Data-Import-Export",
   "url": "https://github.com/MaximeCaty/AL-Company-Data-Import-Export",
   "logo": "",
-  "dependencies": [
-
-  ],
+  "dependencies": [],
   "screenshots": [],
   "platform": "27.0.0.0",
   "application": "27.0.0.0",
@@ -34,6 +32,6 @@
   ],
   "target": "OnPrem",
   "preprocessorSymbols": [
-    "ONPREM"
+    ""
   ]
 }

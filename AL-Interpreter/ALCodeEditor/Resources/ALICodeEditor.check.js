@@ -179,7 +179,7 @@ assert.strictEqual(ALICodeEditor_suggestPool(at(optHead + 'i::|')).length, 0);  
 
 // --- record Option/Enum field: `Rec.Field::` offers the field's members (served with the table's fields) ---
 ALICodeEditor_objMembers['Table:CUSTOMER'] = [{ n: 'No.', t: 'Code', len: 20, pk: true },
-    { n: 'Doc Type', t: 'Option', o: [{ n: 'Quote', v: 0 }, { n: 'Credit Memo', v: 3 }] }];
+{ n: 'Doc Type', t: 'Option', o: [{ n: 'Quote', v: 0 }, { n: 'Credit Memo', v: 3 }] }];
 c = at(head + 'if Cust."Doc Type" = Cust."Doc Type"::|');
 assert.strictEqual(c.mode, 'optmember'); assert.strictEqual(c.receiver, 'Cust'); assert.strictEqual(c.field, 'Doc Type');
 assert.deepStrictEqual(ALICodeEditor_suggestPool(c).map(i => [i.t, i.d]), [['Quote', '0'], ['"Credit Memo"', '3']]);
@@ -200,8 +200,10 @@ function fakeLayer() {
         html: s.slice('<span>'.length),
         insertAdjacentHTML(pos, h) { kids.splice(kids.indexOf(this), 0, ...mk(h)); }   // beforebegin
     }));
-    return { children: kids, removeChild(k) { kids.splice(kids.indexOf(k), 1); },
-             insertAdjacentHTML(pos, h) { kids.push(...mk(h)); } };                   // beforeend
+    return {
+        children: kids, removeChild(k) { kids.splice(kids.indexOf(k), 1); },
+        insertAdjacentHTML(pos, h) { kids.push(...mk(h)); }
+    };                   // beforeend
 }
 const layer = fakeLayer(), txt = () => layer.children.map(k => k.html);
 ALICodeEditor_patchLines(layer, ['a', 'b', 'c']);

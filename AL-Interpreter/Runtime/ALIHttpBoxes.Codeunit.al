@@ -2,7 +2,7 @@
 // each holding exactly one native variable of that type.
 //
 // Why: "ALI Http Runtime" originally banked handles as `List of [HttpClient]` etc. (the same
-// scheme as "ALI TextBuilder Runtime"'s `List of [TextBuilder]`) — but unlike TextBuilder,
+// scheme as "ALI Interpreter" TbBank's `List of [TextBuilder]`) — but unlike TextBuilder,
 // HttpClient/HttpRequestMessage/HttpResponseMessage/HttpContent are NOT valid List of [T]
 // element types on this platform (compile error). Codeunit variables ARE always reference-
 // typed in AL (never value-copied, unlike Record/TextBuilder), so `List of [Codeunit ...]`

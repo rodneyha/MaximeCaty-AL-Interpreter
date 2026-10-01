@@ -2,7 +2,7 @@
 // preprocessorSymbols). The public release ships without it, so it needs no dependency on
 // Microsoft's "Library Assert" test library, which is not installed by default.
 #if TEST
-// ALI Record Tests — the data-access surface: Record, RecordRef (incl. the P4 batch) and
+d Tests — the data-access surface: Record, RecordRef (incl. the P4 batch) and
 // FieldRef. Merged from the former "ALI Record/RecordRef/RecordRef P4/FieldRef Tests"
 // codeunits; all sections share the "ALI Test Customer"/"ALI Test Order Line" fixtures.
 codeunit 51131 "ALI Record Tests"
@@ -2674,6 +2674,198 @@ codeunit 51131 "ALI Record Tests"
             'procedure P(): Integer var r: RecordRef; begin ' + Open() +
             'r.Field(1).SetRange(''A2''); exit(r.Count()); end;'),
             'chained SetRange must filter the ref the chain came from');
+    end;
+
+    // ===== Phase 0 spike — RecordRef alias for inlined record opcodes =====
+    // The interpreter plans to run hot record opcodes on an ALIAS of the "ALI Rec Runtime" bank
+    // slot (RecRt.BindRec -> interpreter-side array element) instead of calling into the runtime.
+    // That only works if RecordRef `:=` through a var parameter into an array element shares ONE
+    // instance: cursor position, filters and record buffer must be visible from both sides.
+
+    [Test]
+    procedure T90a_AliasSharesCursor()
+    var
+        RecRt: Codeunit "ALI Rec Runtime";
+        Alias: array[2] of RecordRef;
+        H: Integer;
+    begin
+        CleanSeed();
+        Seed('A1', 'Alpha', 10, 1);
+        Seed('A2', 'Beta', 20, 2);
+        Seed('A3', 'Gamma', 30, 3);
+        RecRt.Reset();
+        H := RecRt.NewRec(Database::"ALI Test Customer", false, 1);
+        RecRt.BindRec(H, Alias[1]);
+        Assert.IsTrue(Alias[1].FindSet(), 'FindSet on alias');
+        Assert.AreEqual('A1', RecRt.GetFieldText(H, 1), 'bank sees alias FindSet position');
+        Alias[1].Next();
+        Assert.AreEqual('A2', RecRt.GetFieldText(H, 1), 'bank sees alias Next');
+        Assert.AreEqual(1, RecRt.NextRec(H, 1), 'bank Next');
+        Assert.AreEqual('A3', Format(Alias[1].Field(1).Value()), 'alias sees bank Next');
+        Assert.AreEqual(0, Alias[1].Next(), 'alias at end');
+        RecRt.Reset();
+    end;
+
+    [Test]
+    procedure T90b_AliasSharesFilters()
+    var
+        RecRt: Codeunit "ALI Rec Runtime";
+        Alias: array[2] of RecordRef;
+        H: Integer;
+    begin
+        CleanSeed();
+        Seed('A1', 'Alpha', 10, 1);
+        Seed('A2', 'Beta', 20, 2);
+        Seed('A3', 'Gamma', 30, 3);
+        RecRt.Reset();
+        H := RecRt.NewRec(Database::"ALI Test Customer", false, 1);
+        RecRt.BindRec(H, Alias[1]);
+        RecRt.SetRangeEq(H, 1, 'A2');
+        Assert.AreEqual(1, Alias[1].Count(), 'alias sees bank SetRange');
+        Alias[1].Field(1).SetRange();
+        Assert.AreEqual(3, RecRt.CountRec(H), 'bank sees alias filter clear');
+        Alias[1].Field(3).SetRange(20, 30);
+        Assert.AreEqual(2, RecRt.CountRec(H), 'bank sees alias SetRange');
+        RecRt.Reset();
+    end;
+
+    [Test]
+    procedure T90c_AliasSharesBufferForInsert()
+    var
+        Cust: Record "ALI Test Customer";
+        RecRt: Codeunit "ALI Rec Runtime";
+        Alias: array[2] of RecordRef;
+        FRef: FieldRef;
+        H: Integer;
+    begin
+        CleanSeed();
+        RecRt.Reset();
+        H := RecRt.NewRec(Database::"ALI Test Customer", false, 1);
+        RecRt.BindRec(H, Alias[1]);
+        Alias[1].Init();
+        FRef := Alias[1].Field(1);
+        FRef.Value('A9');
+        FRef := Alias[1].Field(3);
+        FRef.Value(12.5);
+        Assert.AreEqual(12.5, RecRt.GetFieldDec(H, 3), 'bank sees alias field store');
+        RecRt.InsertRec(H, false, false);
+        Assert.IsTrue(Cust.Get('A9'), 'row inserted by bank from alias-written buffer');
+        Assert.AreEqual(12.5, Cust.Balance, 'inserted balance');
+        // Reverse direction: bank writes, alias inserts.
+        RecRt.InitRec(H);
+        RecRt.SetFieldText(H, 1, 'A8');
+        Alias[1].Insert();
+        Assert.IsTrue(Cust.Get('A8'), 'row inserted by alias from bank-written buffer');
+        RecRt.Reset();
+    end;
+
+    [Test]
+    procedure T90d_AliasSharesTempDataset()
+    var
+        Cust: Record "ALI Test Customer";
+        RecRt: Codeunit "ALI Rec Runtime";
+        Alias: array[2] of RecordRef;
+        FRef: FieldRef;
+        H: Integer;
+        i: Integer;
+    begin
+        CleanSeed();
+        RecRt.Reset();
+        H := RecRt.NewRec(Database::"ALI Test Customer", true, 1);
+        RecRt.BindRec(H, Alias[1]);
+        Assert.IsTrue(Alias[1].IsTemporary(), 'alias is temporary');
+        for i := 1 to 3 do begin
+            Alias[1].Init();
+            FRef := Alias[1].Field(1);
+            FRef.Value('T' + Format(i));
+            Alias[1].Insert();
+        end;
+        Assert.AreEqual(3, RecRt.CountRec(H), 'bank sees alias temp inserts');
+        Assert.IsTrue(Cust.IsEmpty(), 'nothing reached the database');
+        RecRt.Reset();
+    end;
+
+    [Test]
+    procedure T90e_CachedFieldRefFollowsCursor()
+    var
+        RecRt: Codeunit "ALI Rec Runtime";
+        Alias: array[2] of RecordRef;
+        FRef: array[2] of FieldRef;
+        H: Integer;
+        Names: Text;
+    begin
+        // The interpreter's FieldRef cache binds once and reads per row: a FieldRef taken from
+        // the ALIAS must track rows advanced on either side.
+        CleanSeed();
+        Seed('A1', 'Alpha', 10, 1);
+        Seed('A2', 'Beta', 20, 2);
+        Seed('A3', 'Gamma', 30, 3);
+        RecRt.Reset();
+        H := RecRt.NewRec(Database::"ALI Test Customer", false, 1);
+        RecRt.BindRec(H, Alias[1]);
+        FRef[1] := Alias[1].Field(2);
+        Assert.IsTrue(RecRt.FindRec(H, 0, false, true), 'bank FindSet');
+        repeat
+            Names += Format(FRef[1].Value());
+        until Alias[1].Next() = 0;
+        Assert.AreEqual('AlphaBetaGamma', Names, 'alias FieldRef tracks cursor');
+        RecRt.Reset();
+    end;
+
+    [Test]
+    procedure T90f_OpCountersShareByReference()
+    var
+        RecRt: Codeunit "ALI Rec Runtime";
+        Ins: Dictionary of [Integer, Integer];
+        Mdf: Dictionary of [Integer, Integer];
+        Del: Dictionary of [Integer, Integer];
+    begin
+        // The interpreter's inlined Insert/Modify/Delete bump RecRt's counters through these.
+        RecRt.Reset();
+        RecRt.BindOpCounters(Ins, Mdf, Del);
+        Ins.Add(Database::"ALI Test Customer", 2);
+        Mdf.Add(Database::"ALI Test Customer", 3);
+        Assert.AreEqual(5, RecRt.RecordOpTotal(), 'bank sees counters bumped through the aliases');
+        RecRt.Reset();
+    end;
+
+    [Test]
+    procedure T90g_InlinedWritesCountAndPersist()
+    var
+        Cust: Record "ALI Test Customer";
+        RecRt: Codeunit "ALI Rec Runtime";
+    begin
+        // End to end through the inlined 224/229/230/231 arms: rows land, counters add up.
+        CleanSeed();
+        Assert.AreEqual(1, RunInt(
+            'var c: Record "ALI Test Customer"; procedure P(): Integer begin ' +
+            'c.Init(); c."No." := ''W1''; c.Insert(); ' +
+            'c.Init(); c."No." := ''W2''; c.Insert(true); c.Name := ''x''; c.Modify(); ' +
+            'if c.Delete() then exit(1); exit(0); end;'),
+            'conditional Delete consumed');
+        Assert.IsTrue(Cust.Get('W1'), 'W1 inserted');
+        Assert.IsFalse(Cust.Get('W2'), 'W2 deleted');
+        Assert.AreEqual(4, RecRt.RecordOpTotal(), '2 inserts + 1 modify + 1 delete counted');
+    end;
+
+    [Test]
+    procedure T90h_InlinedGetAndFilters()
+    begin
+        // Through the inlined 226 (1-key, miss, 0-key), 457 (2 args), 271, 270 arms.
+        CleanSeed();
+        Seed('A1', 'Alpha', 10, 1);
+        Seed('A2', 'Beta', 20, 2);
+        Seed('A3', 'Gamma', 30, 3);
+        Assert.AreEqual('Beta-missAlpha213', RunText(
+            'var c: Record "ALI Test Customer"; procedure P(): Text var r: Text; begin ' +
+            'if c.Get(''A2'') then r := c.Name; ' +
+            'if not c.Get(''ZZ'') then r += ''-miss''; ' +
+            'c."No." := ''A1''; if c.Get() then r += c.Name; ' +
+            'c.SetFilter("No.", ''%1|%2'', ''A1'', ''A3''); r += Format(c.Count()); ' +
+            'c.SetRange(Balance, 15, 35); r += Format(c.Count()); ' +
+            'c.SetRange(Balance); c.SetRange("No."); r += Format(c.Count()); ' +
+            'exit(r); end;'),
+            'Get / SetFilter / SetRange through the inlined arms');
     end;
 }
 #endif

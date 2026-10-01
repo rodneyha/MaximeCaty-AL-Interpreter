@@ -59,17 +59,117 @@
 codeunit 51132 "ALI Interpreter"
 {
     Access = Public;
+    // Same grant as "ALI Rec Runtime" — KEEP THE TWO LISTS IDENTICAL (and BuildProtectedTables there).
+    // Indirect permissions apply to the object whose code runs the operation, and the hot record
+    // opcodes (Find/Next/Get/Count/Insert/Modify/Delete on the IRec alias) run HERE, not in the
+    // Rec Runtime. Without it a protected-table write the host opted into is denied (T59), and a
+    // read the Rec Runtime could do indirectly is not.
+    Permissions = tabledata "Approval Entry" = rimd,
+     tabledata "Bank Account Ledger Entry" = rimd,
+     tabledata "Bank Account Statement Line" = rimd,
+tabledata "Batch Processing Parameter" = rimd,
+tabledata "Cancelled Document" = rmid,
+     tabledata "Capacity Ledger Entry" = rimd,
+tabledata "Change Log Entry" = rimd,
+tabledata "Check Ledger Entry" = rimd,
+tabledata "Cust. Ledger Entry" = rimd,
+tabledata "Detailed Cust. Ledg. Entry" = rimd,
+tabledata "Detailed Employee Ledger Entry" = rimd,
+tabledata "Detailed Vendor Ledg. Entry" = rimd,
+tabledata "Dimension Set Entry" = rimd,
+tabledata "Dimension Set Tree Node" = rmid,
+tabledata "Employee Ledger Entry" = rimd,
+tabledata "FA Ledger Entry" = rimd,
+tabledata "FA Register" = rimd,
+tabledata "G/L Entry" = rimd,
+     tabledata "G/L Entry - VAT Entry Link" = rimd,
+tabledata "G/L Register" = rimd,
+tabledata "Ins. Coverage Ledger Entry" = rimd,
+     tabledata "Invt. Receipt Header" = rimd,
+tabledata "Invt. Receipt Line" = rimd,
+tabledata "Invt. Shipment Header" = rimd,
+tabledata "Invt. Shipment Line" = rimd,
+tabledata "Issued Fin. Charge Memo Header" = rimd,
+tabledata "Issued Reminder Header" = rimd,
+tabledata "Issued Reminder Line" = rimd,
+tabledata "Item Application Entry" = rimd,
+tabledata "Item Application Entry History" = rimd,
+tabledata "Item Ledger Entry" = rimd,
+tabledata "Item Register" = rimd,
+tabledata "Job Ledger Entry" = rimd,
+     tabledata "Job Register" = rimd,
+tabledata "Maintenance Ledger Entry" = rimd,
+     tabledata "Payable Employee Ledger Entry" = rimd,
+tabledata "Payable Vendor Ledger Entry" = rimd,
+tabledata "Phys. Inventory Ledger Entry" = rimd,
+tabledata "Posted Approval Comment Line" = rmid,
+tabledata "Posted Approval Entry" = rimd,
+tabledata "Post Value Entry to G/L" = rimd,
+tabledata "Pstd. Phys. Invt. Order Hdr" = rimd,
+tabledata "Pstd. Phys. Invt. Order Line" = rimd,
+     tabledata "Pstd. Phys. Invt. Record Hdr" = rimd,
+tabledata "Pstd. Phys. Invt. Record Line" = rimd,
+tabledata "Purch. Comment Line Archive" = rimd,
+tabledata "Purch. Cr. Memo Hdr." = rimd,
+tabledata "Purch. Cr. Memo Line" = rimd,
+     tabledata "Purch. Inv. Header" = rimd,
+tabledata "Purch. Inv. Line" = rimd,
+tabledata "Purch. Rcpt. Header" = rimd,
+tabledata "Purch. Rcpt. Line" = rimd,
+     tabledata "Purchase Header Archive" = rimd,
+tabledata "Purchase Line Archive" = rimd,
+tabledata "Reminder/Fin. Charge Entry" = rmid,
+     tabledata "Res. Ledger Entry" = rimd,
+tabledata "Return Receipt Header" = rimd,
+tabledata "Return Receipt Line" = rimd,
+     tabledata "Return Shipment Header" = rimd,
+tabledata "Return Shipment Line" = rimd,
+     tabledata "Sales Comment Line Archive" = rimd,
+     tabledata "Sales Cr.Memo Header" = rimd,
+tabledata "Sales Cr.Memo Line" = rimd,
+tabledata "Sales Header Archive" = rimd,
+     tabledata "Sales Invoice Header" = rimd,
+tabledata "Sales Invoice Line" = rimd,
+tabledata "Sales Line Archive" = rimd,
+tabledata "Sales Shipment Header" = rimd,
+tabledata "Sales Shipment Line" = rimd,
+tabledata "Service Cr.Memo Header" = rimd,
+     tabledata "Service Invoice Header" = rimd,
+tabledata "Service Ledger Entry" = rimd,
+     tabledata "Value Entry" = rimd,
+tabledata "VAT Entry" = rimd,
+tabledata "Vendor Ledger Entry" = rimd,
+tabledata "Warehouse Entry" = rimd,
+tabledata "Warranty Ledger Entry" = rimd,
+tabledata "Workflow Record Change Archive" = rimd,
+tabledata "Workflow Step Argument Archive" = rimd,
+     tabledata "Workflow Step Instance Archive" = rimd;
     SingleInstance = true;
 
     var
 
-        // --- array RefShim runtime ---
-        ArrayRt: Codeunit "ALI Array Runtime";
-        BigRt: Codeunit "ALI BigText Runtime";
+        // --- arrays: block bank (was "ALI Array Runtime", folded in — see ArrNewBlock) ---
+        ArrBlocks: List of [Interface "ALI Array Block"];   // handle = 1-based index
+        ArrFreeIdx: List of [Integer];                       // recycled handle indices
+        ArrBlk: Interface "ALI Array Block";                // scratch for the ARR_* arms
+        // --- TextBuilder / BigText banks (were "ALI TextBuilder Runtime" / "ALI BigText Runtime",
+        // folded in). A handle is a 1-based index into the bank. Banks are Lists, NOT fixed arrays:
+        // rray[N] of TextBuilder (and BigText) made every slot alias ONE instance under native
+        // compilation, while List.Add() forces a distinct instance per element. TextBuilder is a
+        // reference type (TbBank.Get + Append mutates the slot); BigText ops write the slot BACK
+        // with BtBank.Set, correct whether BigText behaves as a value or a reference.
+        TbBank: List of [TextBuilder];
+        TbFree: List of [Integer];
+        TbCur: TextBuilder;                 // scratch: the slot being operated on
+        BtBank: List of [BigText];
+        BtFree: List of [Integer];
+        BtCur: BigText;
+        BtOther: BigText;                   // second operand (AddText(BigText) / GetSubText(var BigText))
         BuiltinRegistry: Codeunit "ALI Builtin Registry";
 
         // --- builtin dispatch
-        BSystem: Codeunit "ALI Builtin System";
+        SysLastErrorText: Text;    // script-visible GetLastErrorText (was "ALI Builtin System", folded in)
+        SysGuid: Guid;
         DlgRt: Codeunit "ALI Dialog Runtime";
         DictRt: Codeunit "ALI Dict Runtime";
 
@@ -92,7 +192,6 @@ codeunit 51132 "ALI Interpreter"
         RecRt: Codeunit "ALI Rec Runtime";
         RunOptions: Codeunit "ALI Run Options";
         StrmRt: Codeunit "ALI Stream Runtime";
-        TbRt: Codeunit "ALI TextBuilder Runtime";
 
         // --- Xml* RefShim runtime (Feature 3, unified NodeBank + side banks) ---
         XmlRt: Codeunit "ALI Xml Runtime";
@@ -229,7 +328,7 @@ codeunit 51132 "ALI Interpreter"
         OperArr: array[4096] of Integer;
 
         // --- Run state ---
-        PC: Integer;
+
         // TextEncoding parked by REC_BLOB_ENC for the immediately following blob stream op.
         PendingBlobEnc: Integer;
         ProcTotal: Integer;
@@ -367,18 +466,22 @@ codeunit 51132 "ALI Interpreter"
         ResultSlotVal := 0;
         ResultTypeOrdVal := 0;
         RecRt.Reset();
+        RecRt.BindOpCounters(IOpIns, IOpMod, IOpDel);    // Reset may re-instance the dictionaries
         FcGen += 1;    // PERF TEST — bank reset renumbers handles
         StrmRt.Reset();
         NativeRt.Reset();
-        TbRt.Reset();
-        BigRt.Reset();
+        Clear(TbBank);
+        Clear(TbFree);
+        Clear(BtBank);
+        Clear(BtFree);
         DlgRt.Reset();
         ListRt.Reset();
         DictRt.Reset();
         HttpRt.Reset();
         JsonRt.Reset();
         XmlRt.Reset();
-        ArrayRt.Reset();
+        Clear(ArrBlocks);
+        Clear(ArrFreeIdx);
         Clear(GlobalRecByPC);
         GlobalRecReopens := 0;
         Clear(AllocKindStack);
@@ -549,18 +652,22 @@ codeunit 51132 "ALI Interpreter"
 
         ClearRegisters();
         RecRt.Reset();
+        RecRt.BindOpCounters(IOpIns, IOpMod, IOpDel);    // Reset may re-instance the dictionaries
         FcGen += 1;    // PERF TEST — bank reset renumbers handles
         StrmRt.Reset();
         NativeRt.Reset();
-        TbRt.Reset();
-        BigRt.Reset();
+        Clear(TbBank);
+        Clear(TbFree);
+        Clear(BtBank);
+        Clear(BtFree);
         DlgRt.Reset();
         ListRt.Reset();
         DictRt.Reset();
         HttpRt.Reset();
         JsonRt.Reset();
         XmlRt.Reset();
-        ArrayRt.Reset();
+        Clear(ArrBlocks);
+        Clear(ArrFreeIdx);
         Clear(GlobalRecByPC);
         GlobalRecReopens := 0;
         Clear(AllocKindStack);
@@ -572,7 +679,7 @@ codeunit 51132 "ALI Interpreter"
         CurProcIdVal := EntryProcIdVal;
         FrameSP := 0;
         TryDepth := 0;
-        BSystem.SetLastErrorText('');   // a caught TryFunction error must not leak into the next run
+        SysLastErrorText := '';   // a caught TryFunction error must not leak into the next run
         CurBaseInt := EBInt;
         CurBaseBig := EBBig;
         CurBaseDec := EBDec;
@@ -687,6 +794,32 @@ codeunit 51132 "ALI Interpreter"
         FcSite: Integer;
         FcMiss: Boolean;
         // ===== end PERF TEST =====
+        // Inlined record opcodes (224/225/227-231/237/238 + REC_FLD_* bind): an interpreter-side
+        // ALIAS of each "ALI Rec Runtime" bank slot (RecordRef `:=` shares the instance — T90*
+        // tests), so a hot record op costs zero AL calls instead of 1-5. Valid while
+        // IRecStamp[h] = FcHEpoch[h] + FcGen: same invalidation events as the FieldRef cache;
+        // the default 0 never matches because LoadModule bumps FcGen before any run.
+        IRec: array[256] of RecordRef;      // = "ALI Rec Runtime" bank capacity (RecRefs)
+        IRecStamp: array[256] of Integer;
+        IRecSec: array[256] of Boolean;     // security filters active: Find*/Count/IsEmpty via RecRt
+        IRecFastWr: array[256] of Boolean;  // write gate passed + no pending blob: inline Insert/Modify/Delete
+        IOpIns: Dictionary of [Integer, Integer];   // aliases of RecRt's per-table write counters
+        IOpMod: Dictionary of [Integer, Integer];
+        IOpDel: Dictionary of [Integer, Integer];
+        IOpN: Integer;
+        IOk: Boolean;
+        ITid: Integer;
+        IV: array[2] of Variant;            // boxed operand values for SetRange/SetFilter/Get
+        IW: Integer;
+        IK: Integer;
+        IKc: Integer;
+        IRecId: RecordId;
+        // REC_GET key probe per handle, reopened only when the handle's table changes.
+        IKey: array[256] of RecordRef;
+        IKeyTid: array[256] of Integer;
+        IKeyN: array[256] of Integer;       // primary-key field count
+        IKeyF1: array[256] of FieldRef;
+        IKeyF2: array[256] of FieldRef;
         // CALL_BUILTIN_LIVE arm state (inlined — was ExecCallBuiltinLive, one AL call per builtin).
         // Codeunit members, not locals: no per-call prologue for 16 Variants + 3 Texts.
         BArgs: array[16] of Variant;
@@ -706,6 +839,7 @@ codeunit 51132 "ALI Interpreter"
         BMemoName: array[2049] of Text;
         BMemoDomain: array[2049] of Enum "ALI Builtin Domain";
         BMemoKind: array[2049] of Enum "ALI Builtin Kind";
+        BMemoCode: array[2049] of Integer;    // BuiltinNameCode(name): integer arm label, see there
         BSlot: Integer;
         // Inlined Str builtin (307 arm) scratch.
         BStrFmt: array[9] of Text;
@@ -724,6 +858,7 @@ codeunit 51132 "ALI Interpreter"
         DOutReg: Integer;
         DKeyV: Variant;
         DValV: Variant;
+        PC: Integer;
 
     local procedure RunLoopFlat()
     begin
@@ -734,11 +869,11 @@ codeunit 51132 "ALI Interpreter"
         // P1: no STMT dispatch — the runaway budget is charged only at back-edges (charged
         // _BACK jump twins + FOR_NEXT) and CALLs; source positions for errors come from the
         // per-instruction DbgRowOfPC map.
+        // StmtCounter therefore counts loop iterations + calls, not instructions: every loop shape
+        // (for / while / repeat / foreach / goto-like back jump) crosses a charged arm once per
+        // iteration, and CALL charges once per procedure entry. Straight-line code is free.
         while PC < InstrTotal do begin
             PC += 1;
-            StmtCounter += 1;
-            if StmtCounter > StmtBudget then
-                Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
 
             case OpArr[PC] of
                 // --- hottest: loop kernel / jumps ---
@@ -747,6 +882,9 @@ codeunit 51132 "ALI Interpreter"
                         RIdx := CurBaseInt + AArr[PC];
                         if RegInt[RIdx] < RegInt[CurBaseInt + BArr[PC]] then begin
                             RegInt[RIdx] += 1;
+                            StmtCounter += 1;
+                            if StmtCounter > StmtBudget then
+                                Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                             PC := CArr[PC] - 1;
                         end;
                     end;
@@ -755,6 +893,9 @@ codeunit 51132 "ALI Interpreter"
                         RIdx := CurBaseInt + AArr[PC];
                         if RegInt[RIdx] > RegInt[CurBaseInt + BArr[PC]] then begin
                             RegInt[RIdx] -= 1;
+                            StmtCounter += 1;
+                            if StmtCounter > StmtBudget then
+                                Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                             PC := CArr[PC] - 1;
                         end;
                     end;
@@ -767,19 +908,26 @@ codeunit 51132 "ALI Interpreter"
                     if RegBool[CurBaseBool + BArr[PC]] then
                         PC := AArr[PC] - 1;
                 376: // JMP_BACK (charged)
-
-
-                    PC := AArr[PC] - 1;
+                    begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
+                        PC := AArr[PC] - 1;
+                    end;
                 377: // JMP_IF_FALSE_BACK (charged)
-
-
-                    if not RegBool[CurBaseBool + BArr[PC]] then
+                    if not RegBool[CurBaseBool + BArr[PC]] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 378: // JMP_IF_TRUE_BACK (charged)
-
-
-                    if RegBool[CurBaseBool + BArr[PC]] then
+                    if RegBool[CurBaseBool + BArr[PC]] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 // --- fused branch-compares (P3): A = target, B = left int reg, C = right
                 // int reg (_IMM: C = the immediate value). BF_* jumps when the comparison is
                 // FALSE, BT_* when TRUE. _BACK twins additionally charge the budget. ---
@@ -856,126 +1004,173 @@ codeunit 51132 "ALI Interpreter"
                     if RegInt[CurBaseInt + BArr[PC]] >= CArr[PC] then
                         PC := AArr[PC] - 1;
                 403: // BF_EQ_I_BACK (charged — loop back-edges land here, keep inline)
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] <> RegInt[CurBaseInt + CArr[PC]] then
+                    if RegInt[CurBaseInt + BArr[PC]] <> RegInt[CurBaseInt + CArr[PC]] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 404: // BF_NE_I_BACK
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] = RegInt[CurBaseInt + CArr[PC]] then
+                    if RegInt[CurBaseInt + BArr[PC]] = RegInt[CurBaseInt + CArr[PC]] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 405: // BF_LT_I_BACK
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] >= RegInt[CurBaseInt + CArr[PC]] then
+                    if RegInt[CurBaseInt + BArr[PC]] >= RegInt[CurBaseInt + CArr[PC]] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 406: // BF_LE_I_BACK
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] > RegInt[CurBaseInt + CArr[PC]] then
+                    if RegInt[CurBaseInt + BArr[PC]] > RegInt[CurBaseInt + CArr[PC]] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 407: // BF_GT_I_BACK
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] <= RegInt[CurBaseInt + CArr[PC]] then
+                    if RegInt[CurBaseInt + BArr[PC]] <= RegInt[CurBaseInt + CArr[PC]] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 408: // BF_GE_I_BACK
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] < RegInt[CurBaseInt + CArr[PC]] then
+                    if RegInt[CurBaseInt + BArr[PC]] < RegInt[CurBaseInt + CArr[PC]] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 409: // BT_EQ_I_BACK
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] = RegInt[CurBaseInt + CArr[PC]] then
+                    if RegInt[CurBaseInt + BArr[PC]] = RegInt[CurBaseInt + CArr[PC]] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 410: // BT_NE_I_BACK
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] <> RegInt[CurBaseInt + CArr[PC]] then
+                    if RegInt[CurBaseInt + BArr[PC]] <> RegInt[CurBaseInt + CArr[PC]] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 411: // BT_LT_I_BACK
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] < RegInt[CurBaseInt + CArr[PC]] then
+                    if RegInt[CurBaseInt + BArr[PC]] < RegInt[CurBaseInt + CArr[PC]] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 412: // BT_LE_I_BACK
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] <= RegInt[CurBaseInt + CArr[PC]] then
+                    if RegInt[CurBaseInt + BArr[PC]] <= RegInt[CurBaseInt + CArr[PC]] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 413: // BT_GT_I_BACK
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] > RegInt[CurBaseInt + CArr[PC]] then
+                    if RegInt[CurBaseInt + BArr[PC]] > RegInt[CurBaseInt + CArr[PC]] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 414: // BT_GE_I_BACK
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] >= RegInt[CurBaseInt + CArr[PC]] then
+                    if RegInt[CurBaseInt + BArr[PC]] >= RegInt[CurBaseInt + CArr[PC]] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 415: // BF_EQ_I_IMM_BACK
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] <> CArr[PC] then
+                    if RegInt[CurBaseInt + BArr[PC]] <> CArr[PC] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 416: // BF_NE_I_IMM_BACK
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] = CArr[PC] then
+                    if RegInt[CurBaseInt + BArr[PC]] = CArr[PC] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 417: // BF_LT_I_IMM_BACK
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] >= CArr[PC] then
+                    if RegInt[CurBaseInt + BArr[PC]] >= CArr[PC] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 418: // BF_LE_I_IMM_BACK
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] > CArr[PC] then
+                    if RegInt[CurBaseInt + BArr[PC]] > CArr[PC] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 419: // BF_GT_I_IMM_BACK
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] <= CArr[PC] then
+                    if RegInt[CurBaseInt + BArr[PC]] <= CArr[PC] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 420: // BF_GE_I_IMM_BACK
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] < CArr[PC] then
+                    if RegInt[CurBaseInt + BArr[PC]] < CArr[PC] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 421: // BT_EQ_I_IMM_BACK
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] = CArr[PC] then
+                    if RegInt[CurBaseInt + BArr[PC]] = CArr[PC] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 422: // BT_NE_I_IMM_BACK
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] <> CArr[PC] then
+                    if RegInt[CurBaseInt + BArr[PC]] <> CArr[PC] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 423: // BT_LT_I_IMM_BACK
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] < CArr[PC] then
+                    if RegInt[CurBaseInt + BArr[PC]] < CArr[PC] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 424: // BT_LE_I_IMM_BACK
-
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] <= CArr[PC] then
+                    if RegInt[CurBaseInt + BArr[PC]] <= CArr[PC] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 425: // BT_GT_I_IMM_BACK
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] > CArr[PC] then
+                    if RegInt[CurBaseInt + BArr[PC]] > CArr[PC] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 426: // BT_GE_I_IMM_BACK
-
-
-                    if RegInt[CurBaseInt + BArr[PC]] >= CArr[PC] then
+                    if RegInt[CurBaseInt + BArr[PC]] >= CArr[PC] then begin
+                        StmtCounter += 1;
+                        if StmtCounter > StmtBudget then
+                            Error('ALI950: statement budget exhausted after %1 statements', StmtBudget);
                         PC := AArr[PC] - 1;
+                    end;
                 32: // MOV_I
                     RegInt[CurBaseInt + AArr[PC]] := RegInt[CurBaseInt + BArr[PC]];
                 43: // LOAD_CONST_I
@@ -994,6 +1189,12 @@ codeunit 51132 "ALI Interpreter"
                     RegInt[CurBaseInt + AArr[PC]] := RegInt[CurBaseInt + BArr[PC]] + CArr[PC];
                 428: // SUB_I_IMM
                     RegInt[CurBaseInt + AArr[PC]] := RegInt[CurBaseInt + BArr[PC]] - CArr[PC];
+                475: // MUL_I_IMM
+                    RegInt[CurBaseInt + AArr[PC]] := RegInt[CurBaseInt + BArr[PC]] * CArr[PC];
+                476: // DIV_I_IMM
+                    RegInt[CurBaseInt + AArr[PC]] := RegInt[CurBaseInt + BArr[PC]] div CArr[PC];
+                477: // MOD_I_IMM
+                    RegInt[CurBaseInt + AArr[PC]] := RegInt[CurBaseInt + BArr[PC]] mod CArr[PC];
                 96: // CMP_EQ_I
                     RegBool[CurBaseBool + AArr[PC]] := RegInt[CurBaseInt + BArr[PC]] = RegInt[CurBaseInt + CArr[PC]];
                 97:
@@ -1764,18 +1965,399 @@ codeunit 51132 "ALI Interpreter"
                     ExecUnboxRec(AArr[PC], BArr[PC]);
                 // REC_NEXT — A = handle reg, B = dest int reg, C = step reg. Hoisted out of the
                 // ExecRecordOp group like REC_FLD_*: it runs once per row of every record loop.
+                // Every inlined record arm below starts with the same alias (re)bind — one
+                // RecRt.BindRec call on a stale stamp, zero calls on a hit (see IRec*).
                 228:
-                    RegInt[CurBaseInt + BArr[PC]] := RecRt.NextRec(RegInt[CurBaseInt + AArr[PC]], RegInt[CurBaseInt + CArr[PC]]);
+                    begin
+                        RIdx := RegInt[CurBaseInt + AArr[PC]];
+                        if IRecStamp[RIdx] <> FcHEpoch[RIdx] + FcGen then begin
+                            RecRt.BindRec(RIdx, IRec[RIdx], IRecSec[RIdx], IRecFastWr[RIdx]);
+                            IRecStamp[RIdx] := FcHEpoch[RIdx] + FcGen;
+                        end;
+                        RegInt[CurBaseInt + BArr[PC]] := IRec[RIdx].Next(RegInt[CurBaseInt + CArr[PC]]);
+                    end;
+                224: // REC_INIT: A = handle reg
+                    begin
+                        RIdx := RegInt[CurBaseInt + AArr[PC]];
+                        if IRecStamp[RIdx] <> FcHEpoch[RIdx] + FcGen then begin
+                            RecRt.BindRec(RIdx, IRec[RIdx], IRecSec[RIdx], IRecFastWr[RIdx]);
+                            IRecStamp[RIdx] := FcHEpoch[RIdx] + FcGen;
+                        end;
+                        IRec[RIdx].Init();
+                    end;
+                225: // REC_RESET: A = handle reg
+                    begin
+                        RIdx := RegInt[CurBaseInt + AArr[PC]];
+                        if IRecStamp[RIdx] <> FcHEpoch[RIdx] + FcGen then begin
+                            RecRt.BindRec(RIdx, IRec[RIdx], IRecSec[RIdx], IRecFastWr[RIdx]);
+                            IRecStamp[RIdx] := FcHEpoch[RIdx] + FcGen;
+                        end;
+                        IRec[RIdx].Reset();
+                    end;
+                227: // REC_FIND: A = handle reg, B = Which*4 + ForUpdate*2 + conditional, C = dest bool reg.
+                     // Which 0 = FindSet, 1 = FindFirst, 2 = FindLast. Consuming the native Boolean
+                     // (conditional) returns false on no match; the bare call throws (statement form).
+                    begin
+                        RIdx := RegInt[CurBaseInt + AArr[PC]];
+                        if IRecStamp[RIdx] <> FcHEpoch[RIdx] + FcGen then begin
+                            RecRt.BindRec(RIdx, IRec[RIdx], IRecSec[RIdx], IRecFastWr[RIdx]);
+                            IRecStamp[RIdx] := FcHEpoch[RIdx] + FcGen;
+                        end;
+                        if IRecSec[RIdx] then    // security filters must be re-applied first
+                            IOk := RecRt.FindRec(RIdx, BArr[PC] div 4, (BArr[PC] div 2) mod 2 = 1, (BArr[PC] mod 2) = 1)
+                        else
+                            if (BArr[PC] mod 2) = 1 then
+                                case BArr[PC] div 4 of
+                                    0:
+                                        IOk := IRec[RIdx].FindSet((BArr[PC] div 2) mod 2 = 1);
+                                    1:
+                                        IOk := IRec[RIdx].FindFirst();
+                                    2:
+                                        IOk := IRec[RIdx].FindLast();
+                                    else
+                                        IOk := false;
+                                end
+                            else begin
+                                case BArr[PC] div 4 of
+                                    0:
+                                        IRec[RIdx].FindSet((BArr[PC] div 2) mod 2 = 1);
+                                    1:
+                                        IRec[RIdx].FindFirst();
+                                    2:
+                                        IRec[RIdx].FindLast();
+                                end;
+                                IOk := true;
+                            end;
+                        RegBool[CurBaseBool + CArr[PC]] := IOk;
+                    end;
+                237: // REC_COUNT: A = handle reg, B = dest int reg
+                    begin
+                        RIdx := RegInt[CurBaseInt + AArr[PC]];
+                        if IRecStamp[RIdx] <> FcHEpoch[RIdx] + FcGen then begin
+                            RecRt.BindRec(RIdx, IRec[RIdx], IRecSec[RIdx], IRecFastWr[RIdx]);
+                            IRecStamp[RIdx] := FcHEpoch[RIdx] + FcGen;
+                        end;
+                        if IRecSec[RIdx] then
+                            RegInt[CurBaseInt + BArr[PC]] := RecRt.CountRec(RIdx)
+                        else
+                            RegInt[CurBaseInt + BArr[PC]] := IRec[RIdx].Count();
+                    end;
+                238: // REC_ISEMPTY: A = handle reg, B = dest bool reg
+                    begin
+                        RIdx := RegInt[CurBaseInt + AArr[PC]];
+                        if IRecStamp[RIdx] <> FcHEpoch[RIdx] + FcGen then begin
+                            RecRt.BindRec(RIdx, IRec[RIdx], IRecSec[RIdx], IRecFastWr[RIdx]);
+                            IRecStamp[RIdx] := FcHEpoch[RIdx] + FcGen;
+                        end;
+                        if IRecSec[RIdx] then
+                            RegBool[CurBaseBool + BArr[PC]] := RecRt.IsEmptyRec(RIdx)
+                        else
+                            RegBool[CurBaseBool + BArr[PC]] := IRec[RIdx].IsEmpty();
+                    end;
+                // REC_INSERT / REC_MODIFY / REC_DELETE: A = handle reg, B bit0 = RunTrigger,
+                // bit1 = conditional, C = dest bool reg. Fast path = InsertRec/ModifyRec/DeleteRec
+                // minus the write gate + blob flush (IRecFastWr snapshots both), bumping RecRt's
+                // counters through the aliased dictionaries. Anything else: the RecRt original.
+                229:
+                    begin
+                        RIdx := RegInt[CurBaseInt + AArr[PC]];
+                        if IRecStamp[RIdx] <> FcHEpoch[RIdx] + FcGen then begin
+                            RecRt.BindRec(RIdx, IRec[RIdx], IRecSec[RIdx], IRecFastWr[RIdx]);
+                            IRecStamp[RIdx] := FcHEpoch[RIdx] + FcGen;
+                        end;
+                        if IRecFastWr[RIdx] then begin
+                            if (BArr[PC] div 2) = 1 then
+                                IOk := IRec[RIdx].Insert((BArr[PC] mod 2) = 1)
+                            else begin
+                                IRec[RIdx].Insert((BArr[PC] mod 2) = 1);
+                                IOk := true;
+                            end;
+                            if IOk then begin
+                                ITid := IRec[RIdx].Number();
+                                if IOpIns.Get(ITid, IOpN) then
+                                    IOpIns.Set(ITid, IOpN + 1)
+                                else
+                                    IOpIns.Add(ITid, 1);
+                            end;
+                            RegBool[CurBaseBool + CArr[PC]] := IOk;
+                        end else
+                            RegBool[CurBaseBool + CArr[PC]] := RecRt.InsertRec(RIdx, (BArr[PC] mod 2) = 1, (BArr[PC] div 2) = 1);
+                    end;
+                230:
+                    begin
+                        RIdx := RegInt[CurBaseInt + AArr[PC]];
+                        if IRecStamp[RIdx] <> FcHEpoch[RIdx] + FcGen then begin
+                            RecRt.BindRec(RIdx, IRec[RIdx], IRecSec[RIdx], IRecFastWr[RIdx]);
+                            IRecStamp[RIdx] := FcHEpoch[RIdx] + FcGen;
+                        end;
+                        if IRecFastWr[RIdx] then begin
+                            if (BArr[PC] div 2) = 1 then
+                                IOk := IRec[RIdx].Modify((BArr[PC] mod 2) = 1)
+                            else begin
+                                IRec[RIdx].Modify((BArr[PC] mod 2) = 1);
+                                IOk := true;
+                            end;
+                            if IOk then begin
+                                ITid := IRec[RIdx].Number();
+                                if IOpMod.Get(ITid, IOpN) then
+                                    IOpMod.Set(ITid, IOpN + 1)
+                                else
+                                    IOpMod.Add(ITid, 1);
+                            end;
+                            RegBool[CurBaseBool + CArr[PC]] := IOk;
+                        end else
+                            RegBool[CurBaseBool + CArr[PC]] := RecRt.ModifyRec(RIdx, (BArr[PC] mod 2) = 1, (BArr[PC] div 2) = 1);
+                    end;
+                231:
+                    begin
+                        RIdx := RegInt[CurBaseInt + AArr[PC]];
+                        if IRecStamp[RIdx] <> FcHEpoch[RIdx] + FcGen then begin
+                            RecRt.BindRec(RIdx, IRec[RIdx], IRecSec[RIdx], IRecFastWr[RIdx]);
+                            IRecStamp[RIdx] := FcHEpoch[RIdx] + FcGen;
+                        end;
+                        if IRecFastWr[RIdx] then begin
+                            if (BArr[PC] div 2) = 1 then
+                                IOk := IRec[RIdx].Delete((BArr[PC] mod 2) = 1)
+                            else begin
+                                IRec[RIdx].Delete((BArr[PC] mod 2) = 1);
+                                IOk := true;
+                            end;
+                            if IOk then begin
+                                ITid := IRec[RIdx].Number();
+                                if IOpDel.Get(ITid, IOpN) then
+                                    IOpDel.Set(ITid, IOpN + 1)
+                                else
+                                    IOpDel.Add(ITid, 1);
+                            end;
+                            RegBool[CurBaseBool + CArr[PC]] := IOk;
+                        end else
+                            RegBool[CurBaseBool + CArr[PC]] := RecRt.DeleteRec(RIdx, (BArr[PC] mod 2) = 1, (BArr[PC] div 2) = 1);
+                    end;
+                // Filters + Get. Operand words are reg*16 + class; each arm boxes its values into
+                // IV[] with the class switch written out in place (ReadRegisterAsVariant is ~450ns
+                // per value; only the rare Variant/RecordId/DateFormula classes still call it).
+                234: // REC_SETRANGE: A = handle reg, B = field no, C = valueReg*16 + class
+                    begin
+                        RIdx := RegInt[CurBaseInt + AArr[PC]];
+                        if IRecStamp[RIdx] <> FcHEpoch[RIdx] + FcGen then begin
+                            RecRt.BindRec(RIdx, IRec[RIdx], IRecSec[RIdx], IRecFastWr[RIdx]);
+                            IRecStamp[RIdx] := FcHEpoch[RIdx] + FcGen;
+                        end;
+                        IW := CArr[PC];
+                        IK := 1;
+                        case IW mod 16 of
+                            1:
+                                IV[IK] := RegInt[CurBaseInt + IW div 16];
+                            2:
+                                IV[IK] := RegBig[CurBaseBig + IW div 16];
+                            3:
+                                IV[IK] := RegDec[CurBaseDec + IW div 16];
+                            4:
+                                IV[IK] := RegBool[CurBaseBool + IW div 16];
+                            5:
+                                IV[IK] := RegText[CurBaseText + IW div 16];
+                            6:
+                                IV[IK] := RegDate[CurBaseDate + IW div 16];
+                            7:
+                                IV[IK] := RegTime[CurBaseTime + IW div 16];
+                            8:
+                                IV[IK] := RegDT[CurBaseDT + IW div 16];
+                            9:
+                                IV[IK] := RegDur[CurBaseDur + IW div 16];
+                            10:
+                                IV[IK] := RegGuid[CurBaseGuid + IW div 16];
+                            else
+                                IV[IK] := ReadRegisterAsVariant(IW mod 16, IW div 16);
+                        end;
+                        IRec[RIdx].Field(BArr[PC]).SetRange(IV[1]);
+                    end;
+                270: // REC_SETRANGE_CLR: A = handle reg, B = field no — SetRange(field) clears it
+                    begin
+                        RIdx := RegInt[CurBaseInt + AArr[PC]];
+                        if IRecStamp[RIdx] <> FcHEpoch[RIdx] + FcGen then begin
+                            RecRt.BindRec(RIdx, IRec[RIdx], IRecSec[RIdx], IRecFastWr[RIdx]);
+                            IRecStamp[RIdx] := FcHEpoch[RIdx] + FcGen;
+                        end;
+                        IRec[RIdx].Field(BArr[PC]).SetRange();
+                    end;
+                271: // REC_SETRANGE_2: A = handle reg, B = operand-pool start (from, to), C = field no
+                    begin
+                        RIdx := RegInt[CurBaseInt + AArr[PC]];
+                        if IRecStamp[RIdx] <> FcHEpoch[RIdx] + FcGen then begin
+                            RecRt.BindRec(RIdx, IRec[RIdx], IRecSec[RIdx], IRecFastWr[RIdx]);
+                            IRecStamp[RIdx] := FcHEpoch[RIdx] + FcGen;
+                        end;
+                        for IK := 1 to 2 do begin
+                            IW := OperArr[BArr[PC] + IK - 1];
+                            case IW mod 16 of
+                                1:
+                                    IV[IK] := RegInt[CurBaseInt + IW div 16];
+                                2:
+                                    IV[IK] := RegBig[CurBaseBig + IW div 16];
+                                3:
+                                    IV[IK] := RegDec[CurBaseDec + IW div 16];
+                                4:
+                                    IV[IK] := RegBool[CurBaseBool + IW div 16];
+                                5:
+                                    IV[IK] := RegText[CurBaseText + IW div 16];
+                                6:
+                                    IV[IK] := RegDate[CurBaseDate + IW div 16];
+                                7:
+                                    IV[IK] := RegTime[CurBaseTime + IW div 16];
+                                8:
+                                    IV[IK] := RegDT[CurBaseDT + IW div 16];
+                                9:
+                                    IV[IK] := RegDur[CurBaseDur + IW div 16];
+                                10:
+                                    IV[IK] := RegGuid[CurBaseGuid + IW div 16];
+                                else
+                                    IV[IK] := ReadRegisterAsVariant(IW mod 16, IW div 16);
+                            end;
+                        end;
+                        IRec[RIdx].Field(CArr[PC]).SetRange(IV[1], IV[2]);
+                    end;
+                235: // REC_SETFILTER: A = handle reg, B = field no, C = src text reg
+                    begin
+                        RIdx := RegInt[CurBaseInt + AArr[PC]];
+                        if IRecStamp[RIdx] <> FcHEpoch[RIdx] + FcGen then begin
+                            RecRt.BindRec(RIdx, IRec[RIdx], IRecSec[RIdx], IRecFastWr[RIdx]);
+                            IRecStamp[RIdx] := FcHEpoch[RIdx] + FcGen;
+                        end;
+                        IRec[RIdx].Field(BArr[PC]).SetFilter(RegText[CurBaseText + CArr[PC]]);
+                    end;
+                457: // REC_SETFILTER_ARGS: A = handle reg, B = operand-pool start [fieldNo, filterReg*16,
+                     // values…], C = substitution count. 0-2 values inline, more via ExecRecSetFilterArgs.
+                    begin
+                        RIdx := RegInt[CurBaseInt + AArr[PC]];
+                        if IRecStamp[RIdx] <> FcHEpoch[RIdx] + FcGen then begin
+                            RecRt.BindRec(RIdx, IRec[RIdx], IRecSec[RIdx], IRecFastWr[RIdx]);
+                            IRecStamp[RIdx] := FcHEpoch[RIdx] + FcGen;
+                        end;
+                        if CArr[PC] > 2 then
+                            ExecRecSetFilterArgs(RIdx, BArr[PC], CArr[PC])
+                        else begin
+                            for IK := 1 to CArr[PC] do begin
+                                IW := OperArr[BArr[PC] + 1 + IK];
+                                case IW mod 16 of
+                                    1:
+                                        IV[IK] := RegInt[CurBaseInt + IW div 16];
+                                    2:
+                                        IV[IK] := RegBig[CurBaseBig + IW div 16];
+                                    3:
+                                        IV[IK] := RegDec[CurBaseDec + IW div 16];
+                                    4:
+                                        IV[IK] := RegBool[CurBaseBool + IW div 16];
+                                    5:
+                                        IV[IK] := RegText[CurBaseText + IW div 16];
+                                    6:
+                                        IV[IK] := RegDate[CurBaseDate + IW div 16];
+                                    7:
+                                        IV[IK] := RegTime[CurBaseTime + IW div 16];
+                                    8:
+                                        IV[IK] := RegDT[CurBaseDT + IW div 16];
+                                    9:
+                                        IV[IK] := RegDur[CurBaseDur + IW div 16];
+                                    10:
+                                        IV[IK] := RegGuid[CurBaseGuid + IW div 16];
+                                    else
+                                        IV[IK] := ReadRegisterAsVariant(IW mod 16, IW div 16);
+                                end;
+                            end;
+                            case CArr[PC] of
+                                0:
+                                    IRec[RIdx].Field(OperArr[BArr[PC]]).SetFilter(RegText[CurBaseText + (OperArr[BArr[PC] + 1] div 16)]);
+                                1:
+                                    IRec[RIdx].Field(OperArr[BArr[PC]]).SetFilter(RegText[CurBaseText + (OperArr[BArr[PC] + 1] div 16)], IV[1]);
+                                2:
+                                    IRec[RIdx].Field(OperArr[BArr[PC]]).SetFilter(RegText[CurBaseText + (OperArr[BArr[PC] + 1] div 16)], IV[1], IV[2]);
+                            end;
+                        end;
+                    end;
+                226: // REC_GET: A = handle reg, B = operand-pool start (key values),
+                     // C = destBoolReg*64 + conditional*32 + key count.
+                     // Inline when not secured and the call gives 0 keys (Get on the current PK) or
+                     // EVERY PK field with 1-2 fields. The RecordId is built on a per-handle probe
+                     // RecordRef opened once per table (RecRt.GetRec opens a fresh one per call);
+                     // partial keys stay on RecRt, whose fresh probe blanks the remaining fields.
+                    begin
+                        RIdx := RegInt[CurBaseInt + AArr[PC]];
+                        if IRecStamp[RIdx] <> FcHEpoch[RIdx] + FcGen then begin
+                            RecRt.BindRec(RIdx, IRec[RIdx], IRecSec[RIdx], IRecFastWr[RIdx]);
+                            IRecStamp[RIdx] := FcHEpoch[RIdx] + FcGen;
+                        end;
+                        IKc := CArr[PC] mod 32;
+                        IOk := (not IRecSec[RIdx]) and (IKc <= 2);
+                        if IOk and (IKc > 0) then begin
+                            ITid := IRec[RIdx].Number();
+                            if IKeyTid[RIdx] <> ITid then begin
+                                if IKeyTid[RIdx] <> 0 then
+                                    IKey[RIdx].Close();
+                                IKey[RIdx].Open(ITid);
+                                IKeyTid[RIdx] := ITid;
+                                IKeyN[RIdx] := IKey[RIdx].KeyIndex(1).FieldCount();
+                                IKeyF1[RIdx] := IKey[RIdx].KeyIndex(1).FieldIndex(1);
+                                if IKeyN[RIdx] >= 2 then
+                                    IKeyF2[RIdx] := IKey[RIdx].KeyIndex(1).FieldIndex(2);
+                            end;
+                            IOk := IKc = IKeyN[RIdx];
+                        end;
+                        if not IOk then
+                            ExecRecGet(RIdx, BArr[PC], CArr[PC])
+                        else begin
+                            if IKc = 0 then
+                                IRecId := IRec[RIdx].RecordId()
+                            else begin
+                                for IK := 1 to IKc do begin
+                                    IW := OperArr[BArr[PC] + IK - 1];
+                                    case IW mod 16 of
+                                        1:
+                                            IV[IK] := RegInt[CurBaseInt + IW div 16];
+                                        2:
+                                            IV[IK] := RegBig[CurBaseBig + IW div 16];
+                                        3:
+                                            IV[IK] := RegDec[CurBaseDec + IW div 16];
+                                        4:
+                                            IV[IK] := RegBool[CurBaseBool + IW div 16];
+                                        5:
+                                            IV[IK] := RegText[CurBaseText + IW div 16];
+                                        6:
+                                            IV[IK] := RegDate[CurBaseDate + IW div 16];
+                                        7:
+                                            IV[IK] := RegTime[CurBaseTime + IW div 16];
+                                        8:
+                                            IV[IK] := RegDT[CurBaseDT + IW div 16];
+                                        9:
+                                            IV[IK] := RegDur[CurBaseDur + IW div 16];
+                                        10:
+                                            IV[IK] := RegGuid[CurBaseGuid + IW div 16];
+                                        else
+                                            IV[IK] := ReadRegisterAsVariant(IW mod 16, IW div 16);
+                                    end;
+                                end;
+                                IKeyF1[RIdx].Value := IV[1];
+                                if IKc = 2 then
+                                    IKeyF2[RIdx].Value := IV[2];
+                                IRecId := IKey[RIdx].RecordId();
+                            end;
+                            if ((CArr[PC] div 32) mod 2) = 1 then
+                                IOk := IRec[RIdx].Get(IRecId)
+                            else begin
+                                IRec[RIdx].Get(IRecId);
+                                IOk := true;
+                            end;
+                            RegBool[CurBaseBool + CArr[PC] div 64] := IOk;
+                        end;
+                    end;
                 // --- records (family 7) + native-Record-method sweep (family 9) ---
-                224, 225, 226, 227, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240,
+                232, 233, 236, 239, 240,
                 241, 242, 243, 244, 245, 246,
-                265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275, 276, 277, 278, 279, 280, 281, 282, 283,
+                265, 266, 267, 268, 269, 272, 273, 274, 275, 276, 277, 278, 279, 280, 281, 282, 283,
                 284, 286, 287, 288, 289, 290, 291, 292, 293, 294, 295, 296, 297, 298, 299, 300, 301,
                 302, 303, 304,
                 309, 310, 311, 312, 313, 314, 315, 317, 318, 319, 320, 321,
                 353, 354, 355, 369, 370,
                 438, 439, 440, 441, 442, 443, 444, 445, 446, 447, 448, 449, 450,
-                453, 454, 455, 456, 457:
+                453, 454, 455, 456:
                     ExecRecordOp(OpArr[PC], AArr[PC], BArr[PC], CArr[PC]);
                 // REC_FLD_LOAD / REC_FLD_STORE are hoisted out of the ExecRecordOp group: field
                 // access is the dominant opcode in record-loop scripts, and routing it through
@@ -1784,7 +2366,7 @@ codeunit 51132 "ALI Interpreter"
                 // Boolean/Text go straight to a typed "ALI Rec Runtime" accessor — 1 call. The
                 // remaining 9 classes keep the generic Variant pair.
                 // A = dest/src reg, B = handle reg, C = fieldNo*16 + class.
-                // PERF TEST — cached-FieldRef arms. Hit = zero AL calls; miss = one BindFieldRef call.
+                // PERF TEST — cached-FieldRef arms. Hit = zero AL calls; miss = Field() on the IRec alias (one BindRec call only if the alias is stale).
                 // A cache hit requires FcHandle = RIdx AND RIdx >= 1 (tested in a separate if before the epoch
                 // read below never indexes FcHEpoch[0]); FcHandle only ever stores a handle that
                 // just bound successfully, so FcHEpoch[RIdx] is in range. Variant/RecordId/
@@ -1801,7 +2383,11 @@ codeunit 51132 "ALI Interpreter"
                         if not FcMiss then
                             FcMiss := FcStamp[FcSite] <> FcHEpoch[RIdx] + FcGen;
                         if FcMiss then begin
-                            RecRt.BindFieldRef(RIdx, CArr[PC] div 16, FcRef[FcSite]);
+                            if IRecStamp[RIdx] <> FcHEpoch[RIdx] + FcGen then begin
+                                RecRt.BindRec(RIdx, IRec[RIdx], IRecSec[RIdx], IRecFastWr[RIdx]);
+                                IRecStamp[RIdx] := FcHEpoch[RIdx] + FcGen;
+                            end;
+                            FcRef[FcSite] := IRec[RIdx].Field(CArr[PC] div 16);
                             if FcSite < ArrayLen(FcHandle) then begin
                                 FcHandle[FcSite] := RIdx;
                                 FcStamp[FcSite] := FcHEpoch[RIdx] + FcGen;
@@ -1846,7 +2432,11 @@ codeunit 51132 "ALI Interpreter"
                         if not FcMiss then
                             FcMiss := FcStamp[FcSite] <> FcHEpoch[RIdx] + FcGen;
                         if FcMiss then begin
-                            RecRt.BindFieldRef(RIdx, CArr[PC] div 16, FcRef[FcSite]);
+                            if IRecStamp[RIdx] <> FcHEpoch[RIdx] + FcGen then begin
+                                RecRt.BindRec(RIdx, IRec[RIdx], IRecSec[RIdx], IRecFastWr[RIdx]);
+                                IRecStamp[RIdx] := FcHEpoch[RIdx] + FcGen;
+                            end;
+                            FcRef[FcSite] := IRec[RIdx].Field(CArr[PC] div 16);
                             if FcSite < ArrayLen(FcHandle) then begin
                                 FcHandle[FcSite] := RIdx;
                                 FcStamp[FcSite] := FcHEpoch[RIdx] + FcGen;
@@ -1923,26 +2513,69 @@ codeunit 51132 "ALI Interpreter"
                 //         end;
                 //     end;
                 // ARR_LOAD  A = dest reg, B = handle reg, C = flatIndexReg*16 + elemClass. The flat
-                // index is bounds-checked in "ALI Array Runtime" (per-dimension check ran in
-                // ARR_DIM_CHECK, §20.7).
+                // index is bounds-checked inside the block (per-dimension check ran in
+                // ARR_DIM_CHECK, §20.7). One interface call into the block per access — the old
+                // "ALI Array Runtime" hop (a second call) is gone.
                 256:
-                    case CArr[PC] mod 16 of
-                        1:
-                            RegInt[CurBaseInt + AArr[PC]] := ArrayRt.ReadCell(RegInt[CurBaseInt + BArr[PC]], RegInt[CurBaseInt + (CArr[PC] div 16)]);
-                        5:
-                            RegText[CurBaseText + AArr[PC]] := ArrayRt.ReadCell(RegInt[CurBaseInt + BArr[PC]], RegInt[CurBaseInt + (CArr[PC] div 16)]);
-                        else
-                            WriteRegisterFromVariant(CArr[PC] mod 16, AArr[PC], ArrayRt.ReadCell(RegInt[CurBaseInt + BArr[PC]], RegInt[CurBaseInt + (CArr[PC] div 16)]));
+                    begin
+                        ArrBlocks.Get(RegInt[CurBaseInt + BArr[PC]], ArrBlk);
+                        IK := RegInt[CurBaseInt + (CArr[PC] div 16)];
+                        case CArr[PC] mod 16 of
+                            1:
+                                RegInt[CurBaseInt + AArr[PC]] := ArrBlk.GetCell(IK);
+                            2:
+                                RegBig[CurBaseBig + AArr[PC]] := ArrBlk.GetCell(IK);
+                            3:
+                                RegDec[CurBaseDec + AArr[PC]] := ArrBlk.GetCell(IK);
+                            4:
+                                RegBool[CurBaseBool + AArr[PC]] := ArrBlk.GetCell(IK);
+                            5:
+                                RegText[CurBaseText + AArr[PC]] := ArrBlk.GetCell(IK);
+                            6:
+                                RegDate[CurBaseDate + AArr[PC]] := ArrBlk.GetCell(IK);
+                            7:
+                                RegTime[CurBaseTime + AArr[PC]] := ArrBlk.GetCell(IK);
+                            8:
+                                RegDT[CurBaseDT + AArr[PC]] := ArrBlk.GetCell(IK);
+                            9:
+                                RegDur[CurBaseDur + AArr[PC]] := ArrBlk.GetCell(IK);
+                            10:
+                                RegGuid[CurBaseGuid + AArr[PC]] := ArrBlk.GetCell(IK);
+                            else begin
+                                VScratch := ArrBlk.GetCell(IK);
+                                WriteRegisterFromVariant(CArr[PC] mod 16, AArr[PC], VScratch);
+                            end;
+                        end;
                     end;
                 // ARR_STORE  A = handle reg, B = src reg, C = flatIndexReg*16 + elemClass.
                 257:
-                    case CArr[PC] mod 16 of
-                        1:
-                            ArrayRt.WriteCell(RegInt[CurBaseInt + AArr[PC]], RegInt[CurBaseInt + (CArr[PC] div 16)], RegInt[CurBaseInt + BArr[PC]]);
-                        5:
-                            ArrayRt.WriteCell(RegInt[CurBaseInt + AArr[PC]], RegInt[CurBaseInt + (CArr[PC] div 16)], RegText[CurBaseText + BArr[PC]]);
-                        else
-                            ArrayRt.WriteCell(RegInt[CurBaseInt + AArr[PC]], RegInt[CurBaseInt + (CArr[PC] div 16)], ReadRegisterAsVariant(CArr[PC] mod 16, BArr[PC]));
+                    begin
+                        ArrBlocks.Get(RegInt[CurBaseInt + AArr[PC]], ArrBlk);
+                        IK := RegInt[CurBaseInt + (CArr[PC] div 16)];
+                        case CArr[PC] mod 16 of
+                            1:
+                                ArrBlk.SetCell(IK, RegInt[CurBaseInt + BArr[PC]]);
+                            2:
+                                ArrBlk.SetCell(IK, RegBig[CurBaseBig + BArr[PC]]);
+                            3:
+                                ArrBlk.SetCell(IK, RegDec[CurBaseDec + BArr[PC]]);
+                            4:
+                                ArrBlk.SetCell(IK, RegBool[CurBaseBool + BArr[PC]]);
+                            5:
+                                ArrBlk.SetCell(IK, RegText[CurBaseText + BArr[PC]]);
+                            6:
+                                ArrBlk.SetCell(IK, RegDate[CurBaseDate + BArr[PC]]);
+                            7:
+                                ArrBlk.SetCell(IK, RegTime[CurBaseTime + BArr[PC]]);
+                            8:
+                                ArrBlk.SetCell(IK, RegDT[CurBaseDT + BArr[PC]]);
+                            9:
+                                ArrBlk.SetCell(IK, RegDur[CurBaseDur + BArr[PC]]);
+                            10:
+                                ArrBlk.SetCell(IK, RegGuid[CurBaseGuid + BArr[PC]]);
+                            else
+                                ArrBlk.SetCell(IK, ReadRegisterAsVariant(CArr[PC] mod 16, BArr[PC]));
+                        end;
                     end;
                 365: // ARR_COMPRESS
                     ExecArrCompress(AArr[PC], BArr[PC], CArr[PC]);
@@ -1992,9 +2625,41 @@ codeunit 51132 "ALI Interpreter"
                         BId := AArr[PC];
                         BOperStart := BArr[PC];
                         BArgCount := CArr[PC] mod 32;
+                        // ReadRegisterAsVariant inlined: it was one ~450ns call per builtin argument.
                         for BIdx := 1 to BArgCount do
-                            if BIdx <= 16 then
-                                BArgs[BIdx] := ReadRegisterAsVariant(OperArr[BOperStart + BIdx - 1] mod 16, OperArr[BOperStart + BIdx - 1] div 16);
+                            if BIdx <= 16 then begin
+                                IW := OperArr[BOperStart + BIdx - 1];
+                                case IW mod 16 of
+                                    1:
+                                        BArgs[BIdx] := RegInt[CurBaseInt + IW div 16];
+                                    2:
+                                        BArgs[BIdx] := RegBig[CurBaseBig + IW div 16];
+                                    3:
+                                        BArgs[BIdx] := RegDec[CurBaseDec + IW div 16];
+                                    4:
+                                        BArgs[BIdx] := RegBool[CurBaseBool + IW div 16];
+                                    5:
+                                        BArgs[BIdx] := RegText[CurBaseText + IW div 16];
+                                    6:
+                                        BArgs[BIdx] := RegDate[CurBaseDate + IW div 16];
+                                    7:
+                                        BArgs[BIdx] := RegTime[CurBaseTime + IW div 16];
+                                    8:
+                                        BArgs[BIdx] := RegDT[CurBaseDT + IW div 16];
+                                    9:
+                                        BArgs[BIdx] := RegDur[CurBaseDur + IW div 16];
+                                    10:
+                                        BArgs[BIdx] := RegGuid[CurBaseGuid + IW div 16];
+                                    11:
+                                        BArgs[BIdx] := RegVariant[CurBaseVar + IW div 16];
+                                    12:
+                                        BArgs[BIdx] := RegRecordId[CurBaseRecordId + IW div 16];
+                                    13:
+                                        BArgs[BIdx] := RegDateFormula[CurBaseDateFormula + IW div 16];
+                                    else
+                                        Clear(BArgs[BIdx]);    // ReadRegisterAsVariant returned an empty Variant
+                                end;
+                            end;
                         // ponytail: BResultV is not cleared between calls — every arm with an out
                         // register assigns it; a builtin that returned nothing would reuse the last value.
                         // BIds past the memo share its last slot as scratch: never marked Ok, so the
@@ -2006,6 +2671,7 @@ codeunit 51132 "ALI Interpreter"
                             BMemoName[BSlot] := BuiltinRegistry.GetNameUpper(BId);
                             BMemoDomain[BSlot] := BuiltinRegistry.GetDomain(BId);
                             BMemoKind[BSlot] := BuiltinRegistry.GetKind(BId);
+                            BMemoCode[BSlot] := BuiltinNameCode(BMemoName[BSlot]);
                             BMemoOk[BSlot] := BSlot < ArrayLen(BMemoOk);
                         end;
                         case BMemoKind[BSlot] of
@@ -2023,10 +2689,10 @@ codeunit 51132 "ALI Interpreter"
                                     // costs more than most of these native string statements). Aliases
                                     // share one branch — "one implementation" per §19.4.
                                     "ALI Builtin Domain"::Str:
-                                        case BMemoName[BSlot] of
+                                        case BMemoCode[BSlot] of
                                             // native CopyStr silently returns '' when start > len(s)+1;
                                             // §1.1 requires a raised error, so the bound is checked here.
-                                            'COPYSTR', 'SUBSTRING':
+                                            1: // COPYSTR, SUBSTRING
                                                 begin
                                                     BStrText := Format(BArgs[1]);
                                                     BStrInt := BArgs[2];
@@ -2038,13 +2704,13 @@ codeunit 51132 "ALI Interpreter"
                                                     end else
                                                         BResultV := CopyStr(BStrText, BStrInt);
                                                 end;
-                                            'STRLEN':
+                                            2: // STRLEN
                                                 BResultV := StrLen(Format(BArgs[1]));
-                                            'STRPOS':
+                                            3: // STRPOS
                                                 BResultV := StrPos(Format(BArgs[1]), Format(BArgs[2]));
                                             // SecretStrSubstNo differs only in its declared RESULT TYPE (SecretText).
                                             // BStrFmt is global: unused slots must be reset to ''.
-                                            'STRSUBSTNO', 'SECRETSTRSUBSTNO':
+                                            4: // STRSUBSTNO, SECRETSTRSUBSTNO
                                                 begin
                                                     for BIdx := 1 to 9 do
                                                         if BIdx < BArgCount then
@@ -2054,7 +2720,7 @@ codeunit 51132 "ALI Interpreter"
                                                     BResultV := StrSubstNo(Format(BArgs[1]), BStrFmt[1], BStrFmt[2], BStrFmt[3], BStrFmt[4], BStrFmt[5], BStrFmt[6], BStrFmt[7], BStrFmt[8], BStrFmt[9]);
                                                 end;
                                             // Format(value[, len][, fmt]) — fmt is a standard-format number or a format string.
-                                            'FORMAT':
+                                            5: // FORMAT
                                                 if BArgCount = 1 then
                                                     BResultV := Format(BArgs[1])
                                                 else begin
@@ -2068,12 +2734,12 @@ codeunit 51132 "ALI Interpreter"
                                                         end else
                                                             BResultV := Format(BArgs[1], BStrLen, Format(BArgs[3]));
                                                 end;
-                                            'LOWERCASE', 'TOLOWER':
+                                            6: // LOWERCASE, TOLOWER
                                                 BResultV := LowerCase(Format(BArgs[1]));
-                                            'UPPERCASE', 'TOUPPER':
+                                            7: // UPPERCASE, TOUPPER
                                                 BResultV := UpperCase(Format(BArgs[1]));
                                             // DelChr(s[, where][, chars]) — where: '<' leading, '>' trailing, '=' (default) all.
-                                            'DELCHR':
+                                            8: // DELCHR
                                                 case BArgCount of
                                                     1:
                                                         BResultV := DelChr(Format(BArgs[1]), '=');
@@ -2082,10 +2748,10 @@ codeunit 51132 "ALI Interpreter"
                                                     else
                                                         BResultV := DelChr(Format(BArgs[1]), Format(BArgs[2]), Format(BArgs[3]));
                                                 end;
-                                            'CONVERTSTR':
+                                            9: // CONVERTSTR
                                                 BResultV := ConvertStr(Format(BArgs[1]), Format(BArgs[2]), Format(BArgs[3]));
                                             // PadStr(s, len[, fillChar]) — default fill is space.
-                                            'PADSTR':
+                                            10: // PADSTR
                                                 begin
                                                     BStrLen := BArgs[2];
                                                     if BArgCount >= 3 then
@@ -2097,12 +2763,12 @@ codeunit 51132 "ALI Interpreter"
                                                     else
                                                         BResultV := PadStr(Format(BArgs[1]), BStrLen);
                                                 end;
-                                            'INCSTR':
+                                            11: // INCSTR
                                                 BResultV := IncStr(Format(BArgs[1]));
-                                            'SELECTSTR':
+                                            12: // SELECTSTR
                                                 BResultV := SelectStr(BArgs[1], Format(BArgs[2]));
                                             // DelStr(s, pos[, len]) — default deletes to end.
-                                            'DELSTR':
+                                            13: // DELSTR
                                                 begin
                                                     BStrInt := BArgs[2];
                                                     if BArgCount >= 3 then begin
@@ -2111,13 +2777,13 @@ codeunit 51132 "ALI Interpreter"
                                                     end else
                                                         BResultV := DelStr(Format(BArgs[1]), BStrInt);
                                                 end;
-                                            'INSSTR':
+                                            14: // INSSTR
                                                 begin
                                                     BStrInt := BArgs[3];
                                                     BResultV := InsStr(Format(BArgs[1]), Format(BArgs[2]), BStrInt);
                                                 end;
                                             // StrCheckSum(s[, weight][, modulus])
-                                            'STRCHECKSUM':
+                                            15: // STRCHECKSUM
                                                 case BArgCount of
                                                     1:
                                                         BResultV := StrCheckSum(Format(BArgs[1]));
@@ -2128,47 +2794,47 @@ codeunit 51132 "ALI Interpreter"
                                                         BResultV := StrCheckSum(Format(BArgs[1]), Format(BArgs[2]), BStrInt);
                                                     end;
                                                 end;
-                                            'TRIM':
+                                            16: // TRIM
                                                 BResultV := Format(BArgs[1]).Trim();
-                                            'TRIMSTART':
+                                            17: // TRIMSTART
                                                 if BArgCount >= 2 then
                                                     BResultV := Format(BArgs[1]).TrimStart(Format(BArgs[2]))
                                                 else
                                                     BResultV := Format(BArgs[1]).TrimStart();
-                                            'TRIMEND':
+                                            18: // TRIMEND
                                                 if BArgCount >= 2 then
                                                     BResultV := Format(BArgs[1]).TrimEnd(Format(BArgs[2]))
                                                 else
                                                     BResultV := Format(BArgs[1]).TrimEnd();
-                                            'REPLACE':
+                                            19: // REPLACE
                                                 BResultV := Format(BArgs[1]).Replace(Format(BArgs[2]), Format(BArgs[3]));
-                                            'CONTAINS':
+                                            20: // CONTAINS
                                                 BResultV := Format(BArgs[1]).Contains(Format(BArgs[2]));
                                             // IndexOf(s, value[, startIndex]) — 2-arg keeps StrPos semantics.
-                                            'INDEXOF':
+                                            21: // INDEXOF
                                                 if BArgCount >= 3 then begin
                                                     BStrInt := BArgs[3];
                                                     BResultV := Format(BArgs[1]).IndexOf(Format(BArgs[2]), BStrInt);
                                                 end else
                                                     BResultV := StrPos(Format(BArgs[1]), Format(BArgs[2]));
-                                            'LASTINDEXOF':
+                                            22: // LASTINDEXOF
                                                 if BArgCount >= 3 then begin
                                                     BStrInt := BArgs[3];
                                                     BResultV := Format(BArgs[1]).LastIndexOf(Format(BArgs[2]), BStrInt);
                                                 end else
                                                     BResultV := Format(BArgs[1]).LastIndexOf(Format(BArgs[2]));
-                                            'INDEXOFANY':
+                                            23: // INDEXOFANY
                                                 if BArgCount >= 3 then begin
                                                     BStrInt := BArgs[3];
                                                     BResultV := Format(BArgs[1]).IndexOfAny(Format(BArgs[2]), BStrInt);
                                                 end else
                                                     BResultV := Format(BArgs[1]).IndexOfAny(Format(BArgs[2]));
-                                            'STARTSWITH':
+                                            24: // STARTSWITH
                                                 BResultV := Format(BArgs[1]).StartsWith(Format(BArgs[2]));
-                                            'ENDSWITH':
+                                            25: // ENDSWITH
                                                 BResultV := Format(BArgs[1]).EndsWith(Format(BArgs[2]));
                                             // PadLeft/PadRight(s, count[, char]) — default fill is space.
-                                            'PADLEFT':
+                                            26: // PADLEFT
                                                 begin
                                                     BStrLen := BArgs[2];
                                                     if BArgCount >= 3 then
@@ -2180,7 +2846,7 @@ codeunit 51132 "ALI Interpreter"
                                                     else
                                                         BResultV := Format(BArgs[1]).PadLeft(BStrLen);
                                                 end;
-                                            'PADRIGHT':
+                                            27: // PADRIGHT
                                                 begin
                                                     BStrLen := BArgs[2];
                                                     if BArgCount >= 3 then
@@ -2193,7 +2859,7 @@ codeunit 51132 "ALI Interpreter"
                                                         BResultV := Format(BArgs[1]).PadRight(BStrLen);
                                                 end;
                                             // Remove(s, startIndex[, count]) — default removes to end.
-                                            'REMOVE':
+                                            28: // REMOVE
                                                 begin
                                                     BStrInt := BArgs[2];
                                                     if BArgCount >= 3 then begin
@@ -2207,14 +2873,14 @@ codeunit 51132 "ALI Interpreter"
                                         end;
                                     // Math builtins, inlined like Str (procedure call > statement cost).
                                     "ALI Builtin Domain"::Math:
-                                        case BMemoName[BSlot] of
-                                            'ABS':
+                                        case BMemoCode[BSlot] of
+                                            29: // ABS
                                                 begin
                                                     BNumDec := BArgs[1];
                                                     BResultV := Abs(BNumDec);
                                                 end;
                                             // Round(value[, precision][, mode]) — mode: '=' nearest (default), '<' down, '>' up.
-                                            'ROUND':
+                                            30: // ROUND
                                                 begin
                                                     BNumDec := BArgs[1];
                                                     if BArgCount >= 2 then
@@ -2226,18 +2892,18 @@ codeunit 51132 "ALI Interpreter"
                                                     else
                                                         BResultV := Round(BNumDec, BNumPrec, '=');
                                                 end;
-                                            'POWER':
+                                            31: // POWER
                                                 begin
                                                     BNumDec := BArgs[1];
                                                     BNumPrec := BArgs[2];
                                                     BResultV := Power(BNumDec, BNumPrec);
                                                 end;
-                                            'RANDOM':
+                                            32: // RANDOM
                                                 begin
                                                     BStrInt := BArgs[1];
                                                     BResultV := Random(BStrInt);
                                                 end;
-                                            'RANDOMIZE':
+                                            33: // RANDOMIZE
                                                 if BArgCount >= 1 then begin
                                                     BStrInt := BArgs[1];
                                                     Randomize(BStrInt);
@@ -2248,17 +2914,17 @@ codeunit 51132 "ALI Interpreter"
                                         end;
                                     // Date/time builtins, inlined like Str/Math.
                                     "ALI Builtin Domain"::DateTime:
-                                        case BMemoName[BSlot] of
-                                            'TODAY':
+                                        case BMemoCode[BSlot] of
+                                            34: // TODAY
                                                 BResultV := Today();
-                                            'TIME':
+                                            35: // TIME
                                                 BResultV := Time();
-                                            'CURRENTDATETIME':
+                                            36: // CURRENTDATETIME
                                                 BResultV := CurrentDateTime();
-                                            'WORKDATE':
+                                            37: // WORKDATE
                                                 BResultV := WorkDate();
                                             // CalcDate(expr[, refDate]) — refDate defaults to WorkDate() (native default).
-                                            'CALCDATE':
+                                            38: // CALCDATE
                                                 begin
                                                     if BArgCount >= 2 then
                                                         BDtDate := BArgs[2]
@@ -2266,48 +2932,48 @@ codeunit 51132 "ALI Interpreter"
                                                         BDtDate := WorkDate();
                                                     BResultV := CalcDate(Format(BArgs[1]), BDtDate);
                                                 end;
-                                            'DATE2DMY':
+                                            39: // DATE2DMY
                                                 begin
                                                     BDtDate := BArgs[1];
                                                     BResultV := Date2DMY(BDtDate, BArgs[2]);
                                                 end;
-                                            'DATE2DWY':
+                                            40: // DATE2DWY
                                                 begin
                                                     BDtDate := BArgs[1];
                                                     BResultV := Date2DWY(BDtDate, BArgs[2]);
                                                 end;
-                                            'DMY2DATE':
+                                            41: // DMY2DATE
                                                 BResultV := DMY2Date(BArgs[1], BArgs[2], BArgs[3]);
-                                            'DWY2DATE':
+                                            42: // DWY2DATE
                                                 BResultV := DWY2Date(BArgs[1], BArgs[2], BArgs[3]);
-                                            'CREATEDATETIME':
+                                            43: // CREATEDATETIME
                                                 begin
                                                     BDtDate := BArgs[1];
                                                     BDtTime := BArgs[2];
                                                     BResultV := CreateDateTime(BDtDate, BDtTime);
                                                 end;
-                                            'DT2DATE':
+                                            44: // DT2DATE
                                                 begin
                                                     BDtDT := BArgs[1];
                                                     BResultV := DT2Date(BDtDT);
                                                 end;
-                                            'DT2TIME':
+                                            45: // DT2TIME
                                                 begin
                                                     BDtDT := BArgs[1];
                                                     BResultV := DT2Time(BDtDT);
                                                 end;
-                                            'CLOSINGDATE':
+                                            46: // CLOSINGDATE
                                                 begin
                                                     BDtDate := BArgs[1];
                                                     BResultV := ClosingDate(BDtDate);
                                                 end;
-                                            'NORMALDATE':
+                                            47: // NORMALDATE
                                                 begin
                                                     BDtDate := BArgs[1];
                                                     BResultV := NormalDate(BDtDate);
                                                 end;
                                             // RoundDateTime(dt[, precision]) — precision in ms (BigInteger), native default 1000.
-                                            'ROUNDDATETIME':
+                                            48: // ROUNDDATETIME
                                                 begin
                                                     BDtDT := BArgs[1];
                                                     if BArgCount < 2 then
@@ -2322,15 +2988,15 @@ codeunit 51132 "ALI Interpreter"
                                                         BResultV := RoundDateTime(BDtDT, BDtBig);
                                                     end;
                                                 end;
-                                            'DATI2VARIANT':
+                                            49: // DATI2VARIANT
                                                 begin
                                                     BDtDate := BArgs[1];
                                                     BDtTime := BArgs[2];
                                                     BResultV := DaTi2Variant(BDtDate, BDtTime);
                                                 end;
-                                            'VARIANT2DATE':
+                                            50: // VARIANT2DATE
                                                 BResultV := Variant2Date(BArgs[1]);
-                                            'VARIANT2TIME':
+                                            51: // VARIANT2TIME
                                                 BResultV := Variant2Time(BArgs[1]);
                                             else
                                                 Error('ALI980: ''%1'' is not a recognized date/time builtin', BMemoName[BSlot]);
@@ -2341,7 +3007,95 @@ codeunit 51132 "ALI Interpreter"
                                             BWarned := false;
                                             BCollectedMsg := '';
                                             BWarningText := '';
-                                            BSystem.Invoke(BMemoName[BSlot], BArgs, BArgCount, BResultV, BHasMessage, BCollectedMsg, BWarned, BWarningText);
+                                            // §8 interception, inlined (was "ALI Builtin System".Invoke: one call + a
+                                            // Text `case` on the name). Message/Error/Confirm/StrMenu never show real
+                                            // UI unless the run options ask for it on a GUI host.
+                                            case BMemoCode[BSlot] of
+                                                52: // MESSAGE
+                                                    begin
+                                                        BCollectedMsg := SysFormatArgs();
+                                                        BHasMessage := true;
+                                                        if (RunOptions.GetMessageMode() = 1) and GuiAllowed() then
+                                                            Message(BCollectedMsg);
+                                                    end;
+                                                53: // ERROR — raises, never returns
+                                                    SysRaiseError();
+                                                54: // CONFIRM
+                                                    BResultV := SysConfirm();
+                                                55: // STRMENU
+                                                    BResultV := SysStrMenu();
+                                                56: // SLEEP
+                                                    Sleep(BArgs[1]);
+                                                57: // COMMIT — a real commit; simulation runs enter via RunLoopSimulation
+                                                    // ([CommitBehavior::Ignore]), so there it is silently dropped (§8).
+                                                    Commit();
+                                                58: // GUIALLOWED — Dialog mode Show + real host GUI (§8)
+                                                    BResultV := RunOptions.EffectiveGuiAllowed();
+                                                59: // COMPANYNAME
+                                                    BResultV := CompanyName();
+                                                60: // USERID
+                                                    BResultV := UserId();
+                                                61: // USERSECURITYID
+                                                    BResultV := UserSecurityId();
+                                                62: // CREATEGUID
+                                                    BResultV := CreateGuid();
+                                                63: // ISNULLGUID
+                                                    begin
+                                                        SysGuid := BArgs[1];
+                                                        BResultV := IsNullGuid(SysGuid);
+                                                    end;
+                                                64: // EVALUATE
+                                                    Error('ALI981: Evaluate must be lowered as a var-param call, not a plain CALL_BUILTIN (binder contract)');
+                                                65: // GETLASTERRORTEXT
+                                                    BResultV := SysLastErrorText;
+                                                66: // GETLASTERRORCALLSTACK
+                                                    BResultV := GetLastErrorCallStack();
+#if not CLOUD
+                                                67: // GETLASTERROROBJECT
+                                                    BResultV := GetLastErrorObject();
+#endif
+                                                68: // GETLASTERRORCODE
+                                                    BResultV := GetLastErrorCode();
+                                                69: // SELECTLATESTVERSION
+                                                    if BArgCount = 0 then
+                                                        SelectLatestVersion()
+                                                    else
+                                                        SelectLatestVersion(BArgs[1]);
+                                                70: // CLEARLASTERROR
+                                                    SysLastErrorText := '';
+                                                71: // SESSIONID
+                                                    BResultV := SessionId();
+                                                72: // GLOBALLANGUAGE
+                                                    if BArgCount > 0 then
+                                                        BResultV := GlobalLanguage(BArgs[1])
+                                                    else
+                                                        BResultV := GlobalLanguage();
+                                                73: // WINDOWSLANGUAGE
+                                                    BResultV := WindowsLanguage();
+                                                // Neither option type converts to Integer directly (no implicit conversion,
+                                                // no AsInteger) — the Variant round-trip is the only route to the ordinal.
+                                                74: // CLIENTTYPE, CURRENTCLIENTTYPE
+                                                    begin
+                                                        VScratch := CurrentClientType();
+                                                        BStrInt := VScratch;
+                                                        BResultV := BStrInt;
+                                                    end;
+                                                75: // CURRENTEXECUTIONMODE
+                                                    begin
+                                                        VScratch := CurrentExecutionMode();
+                                                        BStrInt := VScratch;
+                                                        BResultV := BStrInt;
+                                                    end;
+                                                76: // COPYSTREAM — args 1/2 are stream handles (Int register path)
+                                                    if BArgCount >= 3 then
+                                                        BResultV := StrmRt.CopyStreamTo(BArgs[1], BArgs[2], BArgs[3], true)
+                                                    else
+                                                        BResultV := StrmRt.CopyStreamTo(BArgs[1], BArgs[2], 0, false);
+                                                77: // CLEAR — lowered as a typed reset of the var-param slot; nothing to do
+                                                    ;
+                                                else
+                                                    Error('ALI980: ''%1'' is not a recognized system builtin function', BMemoName[BSlot]);
+                                            end;
                                             if BHasMessage then
                                                 PendingMessages.Add(BCollectedMsg);
                                             if BWarned and (BWarningText <> '') then
@@ -2362,12 +3116,70 @@ codeunit 51132 "ALI Interpreter"
                                         Error('ALI951: builtin ''%1'' has no dispatch domain', BMemoName[BSlot]);
                                 end;
                         end;
-                        if CArr[PC] >= 512 then
-                            if (CArr[PC] div 32) mod 16 > 0 then
-                                WriteRegisterFromVariant((CArr[PC] div 32) mod 16, CArr[PC] div 512, BResultV);
+                        // WriteRegisterFromVariant inlined: one call (+ a by-value Variant copy) per
+                        // builtin with a result. Class 0 = no out register.
+                        if CArr[PC] >= 512 then begin
+                            IW := CArr[PC] div 512;
+                            case (CArr[PC] div 32) mod 16 of
+                                1:
+                                    RegInt[CurBaseInt + IW] := BResultV;
+                                2:
+                                    RegBig[CurBaseBig + IW] := BResultV;
+                                3:
+                                    RegDec[CurBaseDec + IW] := BResultV;
+                                4:
+                                    RegBool[CurBaseBool + IW] := BResultV;
+                                5:
+                                    RegText[CurBaseText + IW] := BResultV;
+                                6:
+                                    RegDate[CurBaseDate + IW] := BResultV;
+                                7:
+                                    RegTime[CurBaseTime + IW] := BResultV;
+                                8:
+                                    RegDT[CurBaseDT + IW] := BResultV;
+                                9:
+                                    RegDur[CurBaseDur + IW] := BResultV;
+                                10:
+                                    RegGuid[CurBaseGuid + IW] := BResultV;
+                                11:
+                                    RegVariant[CurBaseVar + IW] := BResultV;
+                                12:
+                                    RegRecordId[CurBaseRecordId + IW] := BResultV;
+                                13:
+                                    RegDateFormula[CurBaseDateFormula + IW] := BResultV;
+                            end;
+                        end;
                     end;
-                308: // TB_METHOD (M9 TextBuilder RefShim)
-                    ExecTextBuilderOp(AArr[PC], BArr[PC], CArr[PC]);
+                308: // TB_METHOD (M9 TextBuilder RefShim). C = OutReg*100000 + OutCls*10000 + MethodId*100
+                     // + ArgCount. Append / AppendLine(Text) with a Text-register argument and
+                     // ToText() run here with zero AL calls; every other method -> ExecTextBuilderOp.
+                     // Nested ifs, not `and`: AL evaluates every operand, and OperArr[BArr[PC]] is only
+                     // a valid read for methods that HAVE an argument (MethodId 0 = New has no handle).
+                    begin
+                        IW := (CArr[PC] div 100) mod 100;
+                        IOk := false;
+                        if (IW = 1) or (IW = 3) or (IW = 15) then begin
+                            IK := RegInt[CurBaseInt + AArr[PC]];
+                            if (IK >= 1) and (IK <= TbBank.Count()) then
+                                if IW = 15 then begin
+                                    if ((CArr[PC] div 10000) mod 10 = 5) and (CArr[PC] >= 100000) then begin
+                                        TbBank.Get(IK, TbCur);
+                                        RegText[CurBaseText + CArr[PC] div 100000] := TbCur.ToText();
+                                        IOk := true;
+                                    end;
+                                end else
+                                    if OperArr[BArr[PC]] mod 16 = 5 then begin
+                                        TbBank.Get(IK, TbCur);
+                                        if IW = 1 then
+                                            TbCur.Append(RegText[CurBaseText + OperArr[BArr[PC]] div 16])
+                                        else
+                                            TbCur.AppendLine(RegText[CurBaseText + OperArr[BArr[PC]] div 16]);
+                                        IOk := true;
+                                    end;
+                        end;
+                        if not IOk then
+                            ExecTextBuilderOp(AArr[PC], BArr[PC], CArr[PC]);
+                    end;
                 466: // BIGTEXT_METHOD (BigText RefShim)
                     ExecBigTextOp(AArr[PC], BArr[PC], CArr[PC]);
                 467: // SECRET_METHOD (SecretText members — receiver is a Text register, not a handle)
@@ -2689,7 +3501,7 @@ codeunit 51132 "ALI Interpreter"
         UnwindFramesTo(SavedSP);
         // GetLastErrorText() in the script reads the builtin's own copy, not the platform's —
         // hand it over, then clear the native one so it cannot leak into Run()'s own reporting.
-        BSystem.SetLastErrorText(ErrText);
+        SysLastErrorText := ErrText;
         ClearLastError();
         PC := SavedPC;
         RegBool[CurBaseBool + DestReg] := false;
@@ -2919,7 +3731,7 @@ codeunit 51132 "ALI Interpreter"
     begin
         case Kind of
             "ALI TypeKind"::Array:
-                ArrayRt.FreeBlock(H);
+                ArrFreeIdx.Add(H);
             "ALI TypeKind"::List:
                 ListRt.FreeList(H);
             "ALI TypeKind"::Dictionary:
@@ -2932,9 +3744,12 @@ codeunit 51132 "ALI Interpreter"
             "ALI TypeKind"::InStream, "ALI TypeKind"::OutStream:
                 StrmRt.FreeStream(H);
             "ALI TypeKind"::TextBuilder:
-                TbRt.FreeTb(H);
+                TbRelease(H);
             "ALI TypeKind"::BigText:
-                BigRt.FreeBt(H);
+                if (H >= 1) and (H <= BtBank.Count()) then begin
+                    BtClear(H);
+                    BtFree.Add(H);
+                end;
             "ALI TypeKind"::Dialog:
                 DlgRt.FreeDialog(H);
             "ALI TypeKind"::NativeCodeunit:
@@ -2978,7 +3793,7 @@ codeunit 51132 "ALI Interpreter"
         // ArgCount digit, fresh handle written into OutReg and tracked when local.
         if MethodId = 0 then begin
             IsGlobal := C mod 100 mod 2;
-            ResultInt := BigRt.NewBt();
+            ResultInt := BtNew();
             if IsGlobal = 0 then
                 TrackLocalHandle("ALI TypeKind"::BigText, ResultInt);
             if (OutCls > 0) and (OutReg > 0) then
@@ -2987,31 +3802,58 @@ codeunit 51132 "ALI Interpreter"
         end;
 
         HA := RegInt[CurBaseInt + A];
+        BtGet(HA, BtCur);
+        // Mutations write the slot back (BtBank.Set) — see the bank declaration.
         case MethodId of
             1: // AddText(Text)
-                BigRt.AddText(HA, ArgAsText(B, 0));
+                begin
+                    BtCur.AddText(ArgAsText(B, 0));
+                    BtBank.Set(HA, BtCur);
+                end;
             2: // AddText(Text, Integer)
-                BigRt.AddTextAt(HA, ArgAsText(B, 0), ArgAsInt(B, 1));
+                begin
+                    BtCur.AddText(ArgAsText(B, 0), ArgAsInt(B, 1));
+                    BtBank.Set(HA, BtCur);
+                end;
             3: // AddText(BigText)
-                BigRt.AddBig(HA, ArgAsInt(B, 0));
+                begin
+                    BtGet(ArgAsInt(B, 0), BtOther);
+                    BtCur.AddText(BtOther);
+                    BtBank.Set(HA, BtCur);
+                end;
             4: // AddText(BigText, Integer)
-                BigRt.AddBigAt(HA, ArgAsInt(B, 0), ArgAsInt(B, 1));
+                begin
+                    BtGet(ArgAsInt(B, 0), BtOther);
+                    BtCur.AddText(BtOther, ArgAsInt(B, 1));
+                    BtBank.Set(HA, BtCur);
+                end;
             5: // GetSubText(var Text, Integer)
-                ResultText := BigRt.GetSubTextToText(HA, ArgAsInt(B, 1));
+                BtCur.GetSubText(ResultText, ArgAsInt(B, 1));
             6: // GetSubText(var Text, Integer, Integer)
-                ResultText := BigRt.GetSubTextToTextLen(HA, ArgAsInt(B, 1), ArgAsInt(B, 2));
-            7: // GetSubText(var BigText, Integer)
-                BigRt.GetSubTextToBig(HA, ArgAsInt(B, 0), ArgAsInt(B, 1));
+                BtCur.GetSubText(ResultText, ArgAsInt(B, 1), ArgAsInt(B, 2));
+            7: // GetSubText(var BigText, Integer) — writes the DESTINATION slot
+                begin
+                    BtGet(ArgAsInt(B, 0), BtOther);
+                    BtCur.GetSubText(BtOther, ArgAsInt(B, 1));
+                    BtBank.Set(ArgAsInt(B, 0), BtOther);
+                end;
             8: // GetSubText(var BigText, Integer, Integer)
-                BigRt.GetSubTextToBigLen(HA, ArgAsInt(B, 0), ArgAsInt(B, 1), ArgAsInt(B, 2));
+                begin
+                    BtGet(ArgAsInt(B, 0), BtOther);
+                    BtCur.GetSubText(BtOther, ArgAsInt(B, 1), ArgAsInt(B, 2));
+                    BtBank.Set(ArgAsInt(B, 0), BtOther);
+                end;
             9: // Length() -> Integer
-                ResultInt := BigRt.GetLength(HA);
-            10: // Read(InStream) — hosted by the stream runtime, which owns the native stream
-                StrmRt.BigTextRead(ArgAsInt(B, 0), HA);
+                ResultInt := BtCur.Length();
+            10: // Read(InStream) — the stream runtime owns the native stream, so it gets the BigText ar
+                begin
+                    StrmRt.BigTextRead(ArgAsInt(B, 0), BtCur);
+                    BtBank.Set(HA, BtCur);
+                end;
             11: // TextPos(Text) -> Integer
-                ResultInt := BigRt.TextPos(HA, ArgAsText(B, 0));
+                ResultInt := BtCur.TextPos(ArgAsText(B, 0));
             12: // Write(OutStream)
-                StrmRt.BigTextWrite(ArgAsInt(B, 0), HA);
+                StrmRt.BigTextWrite(ArgAsInt(B, 0), BtCur);
             else
                 Error('ALI998: invalid BigText method id %1 at PC %2', MethodId, PC);
         end;
@@ -3344,38 +4186,9 @@ codeunit 51132 "ALI Interpreter"
                  // repurpose): A = dest int reg (fresh handle), B = tableId (literal),
                  // C = IsTemp*2 + IsGlobal(0/1)
                 ExecRecNew(A, B, C);
-            224: // REC_INIT
-                RecRt.InitRec(HA);
-            225: // REC_RESET
-                RecRt.ResetRec(HA);
-            226: // REC_GET
-                ExecRecGet(HA, B, C);
-            227: // REC_FIND — B = Which*4 + ForUpdate*2 + conditional; C = dest bool reg
-                RegBool[CurBaseBool + C] := RecRt.FindRec(HA, B div 4, (B div 2) mod 2 = 1, (B mod 2) = 1);
-            229: // REC_INSERT — B bit0=trigger, bit1=conditional; C=dest bool reg
-                RegBool[CurBaseBool + C] := RecRt.InsertRec(HA, (B mod 2) = 1, (B div 2) = 1);
-            230: // REC_MODIFY — B bit0=trigger, bit1=conditional; C=dest bool reg
-                RegBool[CurBaseBool + C] := RecRt.ModifyRec(HA, (B mod 2) = 1, (B div 2) = 1);
-            231: // REC_DELETE — B bit0=trigger, bit1=conditional; C=dest bool reg
-                RegBool[CurBaseBool + C] := RecRt.DeleteRec(HA, (B mod 2) = 1, (B div 2) = 1);
+            // 224-231/234/235/237/238/270/271/457 run inlined in RunLoopFlat on the IRec alias.
             232: // REC_DELETEALL — B bit0=trigger, bit1=conditional; C=dest bool reg
                 RegBool[CurBaseBool + C] := RecRt.DeleteAllRec(HA, (B mod 2) = 1, (B div 2) = 1);
-            234: // REC_SETRANGE
-                begin
-                    Cls := C mod 16;
-                    V := ReadRegisterAsVariant(Cls, C div 16);
-                    RecRt.SetRangeEq(HA, B, V);
-                end;
-            270: // REC_SETRANGE_CLR — SetRange(field): clear the field's filter
-                RecRt.ClearFieldRange(HA, B);
-            271: // REC_SETRANGE_2 — SetRange(field, from, to): B = operand-pool start (2 entries), C = field no
-                RecRt.SetRangeBetween(HA, C,
-                    ReadRegisterAsVariant(OperArr[B] mod 16, OperArr[B] div 16),
-                    ReadRegisterAsVariant(OperArr[B + 1] mod 16, OperArr[B + 1] div 16));
-            237: // REC_COUNT
-                RegInt[CurBaseInt + B] := RecRt.CountRec(HA);
-            238: // REC_ISEMPTY
-                RegBool[CurBaseBool + B] := RecRt.IsEmptyRec(HA);
             241: // REC_VALIDATE
                 begin
                     FieldNo := C div 16;
@@ -3410,10 +4223,6 @@ codeunit 51132 "ALI Interpreter"
                 RegBool[CurBaseBool + B] := RecRt.WritePermissionRec(HA);
             244: // REC_TRANSFERFIELDS: A=dest handle, B=src handle, C=replaceExisting(1/0)
                 RecRt.TransferFieldsRec(HA, HB, C = 1);
-            235: // REC_SETFILTER: A=handle, B=fieldNo, C=src text reg
-                RecRt.SetFilterField(HA, B, RegText[CurBaseText + C]);
-            457: // REC_SETFILTER_ARGS: A=handle, B=operand-pool start, C=substitution value count
-                ExecRecSetFilterArgs(HA, B, C);
             276: // REC_GETFILTER: A=dest text reg, B=handle, C=fieldNo
                 RegText[CurBaseText + A] := RecRt.GetFilterField(HB, C);
             279: // REC_COPYFILTER: A=source handle, B=target handle (= A same-record),
@@ -3575,7 +4384,10 @@ codeunit 51132 "ALI Interpreter"
             453: // REC_BLOB_INSTREAM: A=rec handle, B=stream handle, C=fieldNo*5+textEncoding (4 = PendingBlobEnc)
                 RecRt.BlobCreateInStream(HA, C div 5, HB, BlobEnc(C mod 5));
             454: // REC_BLOB_OUTSTREAM: A=rec handle, B=stream handle, C=fieldNo*5+textEncoding (4 = PendingBlobEnc)
-                RecRt.BlobCreateOutStream(HA, C div 5, HB, BlobEnc(C mod 5));
+                begin
+                    RecRt.BlobCreateOutStream(HA, C div 5, HB, BlobEnc(C mod 5));
+                    IRecStamp[HA] := 0;    // pending blob: re-bind so IRecFastWr drops to the flushing RecRt path
+                end;
             455: // REC_BLOB_HASVALUE: A=dest bool reg, B=rec handle, C=fieldNo
                 RegBool[CurBaseBool + A] := RecRt.BlobHasValue(HB, C);
             456: // REC_BLOB_LENGTH: A=dest int reg, B=rec handle, C=fieldNo
@@ -3967,10 +4779,81 @@ codeunit 51132 "ALI Interpreter"
     begin
         IsGlobal := C mod 2;
         TotalN := C div 2;
-        Handle := ArrayRt.NewBlock(B, TotalN);
+        Handle := ArrNewBlock(B, TotalN);
         RegInt[CurBaseInt + A] := Handle;
         if IsGlobal = 0 then
             TrackLocalHandle("ALI TypeKind"::Array, Handle);
+    end;
+
+    // ===== Array block bank (was codeunit "ALI Array Runtime", folded in so ARR_LOAD/ARR_STORE
+    // call the block directly). An array VALUE is a plain 1-based Int handle = index into
+    // ArrBlocks; each live array is one "ALI Array Block" instance (S/M/L/XL tier, native
+    // `array[Cap] of Variant`) picked by TotalN. Freed handles go on ArrFreeIdx (frame pop /
+    // rebind) and are reused first-fit when the freed block's tier still fits. =====
+
+    // Allocate (or reuse) a block of TotalN zero-init cells for register class Cls; returns the
+    // handle. Reused blocks are re-seeded; fresh blocks are seeded on Alloc (native Variant
+    // cells default EMPTY, not typed-zero — see "ALI Array Block").
+    local procedure ArrNewBlock(Cls: Integer; TotalN: Integer): Integer
+    var
+        Cand: Integer;
+        i: Integer;
+        Blk: Interface "ALI Array Block";
+    begin
+        if (TotalN < 1) or (TotalN > 1000000) then
+            Error('ALI988: array element count %1 out of range (1..1000000)', TotalN);
+        for i := ArrFreeIdx.Count() downto 1 do begin
+            Cand := ArrFreeIdx.Get(i);
+            ArrBlocks.Get(Cand, Blk);
+            if Blk.Cap() >= TotalN then begin
+                ArrFreeIdx.RemoveAt(i);
+                Blk.Alloc(TotalN, Cls);
+                exit(Cand);
+            end;
+        end;
+        if TotalN <= 100 then
+            Blk := ArrFreshS()
+        else
+            if TotalN <= 1000 then
+                Blk := ArrFreshM()
+            else
+                if TotalN <= 10000 then
+                    Blk := ArrFreshL()
+                else
+                    Blk := ArrFreshXL();
+        Blk.Alloc(TotalN, Cls);
+        ArrBlocks.Add(Blk);
+        exit(ArrBlocks.Count());
+    end;
+
+    // Each ArrFresh* declares its own tier codeunit local → a genuinely DISTINCT instance per
+    // call (AL instantiates a local codeunit var on entry), and ONLY that tier's array is allocated.
+    local procedure ArrFreshS(): Interface "ALI Array Block"
+    var
+        S: Codeunit "ALI Array Block S";
+    begin
+        exit(S);
+    end;
+
+    local procedure ArrFreshM(): Interface "ALI Array Block"
+    var
+        M: Codeunit "ALI Array Block M";
+    begin
+        exit(M);
+    end;
+
+    local procedure ArrFreshL(): Interface "ALI Array Block"
+    var
+        L: Codeunit "ALI Array Block L";
+    begin
+        exit(L);
+    end;
+
+    local procedure ArrFreshXL(): Interface "ALI Array Block"
+    var
+        XL: Codeunit "ALI Array Block XL";
+    begin
+        exit(XL);
     end;
 
     // ARR_REBIND (Handle Lifecycle Unification Phase 5): `arrayVar := ProcCall()`. The new
@@ -3996,7 +4879,7 @@ codeunit 51132 "ALI Interpreter"
                 Freed := true;
             end;
         if Freed then
-            ArrayRt.FreeBlock(OldHandle);
+            ArrFreeIdx.Add(OldHandle);
         RegInt[CurBaseInt + A] := NewHandle;
     end;
 
@@ -4010,7 +4893,8 @@ codeunit 51132 "ALI Interpreter"
         // Whole compaction runs inside the block on its native Cells (§20.14) — one Blocks.Get
         // instead of a ReadCell/WriteCell (each a Blocks.Get) per element.
         //Handle := RegInt[CurBaseInt + A];
-        RegInt[CurBaseInt + B] := ArrayRt.CompressBlock(RegInt[CurBaseInt + A]);
+        ArrBlocks.Get(RegInt[CurBaseInt + A], ArrBlk);
+        RegInt[CurBaseInt + B] := ArrBlk.Compress();
     end;
 
     // ARR_COPY  A = operand-pool start [destHandleReg, srcHandleReg, posReg, lenReg], B =
@@ -4025,11 +4909,15 @@ codeunit 51132 "ALI Interpreter"
         Pos: Integer;
         SN: Integer;
         SrcHandle: Integer;
+        Dest: Interface "ALI Array Block";
+        Src: Interface "ALI Array Block";
     begin
         DestHandle := RegInt[CurBaseInt + OperArr[A]];
         SrcHandle := RegInt[CurBaseInt + OperArr[A + 1]];
-        DN := ArrayRt.TotalNOf(DestHandle);
-        SN := ArrayRt.TotalNOf(SrcHandle);
+        ArrBlocks.Get(DestHandle, Dest);
+        ArrBlocks.Get(SrcHandle, Src);
+        DN := Dest.TotalN();
+        SN := Src.TotalN();
         Pos := RegInt[CurBaseInt + OperArr[A + 2]];
         if C = 1 then
             Len := RegInt[CurBaseInt + OperArr[A + 3]]
@@ -4045,7 +4933,7 @@ codeunit 51132 "ALI Interpreter"
             Error('ALI987: CopyArray length %1 exceeds destination size %2', Len, DN);
         // Bounds validated above; the copy loop runs in the runtime with both blocks resolved
         // once (no per-cell Blocks.Get).
-        ArrayRt.CopyBlock(DestHandle, SrcHandle, Pos, Len);
+        Dest.CopyFrom(Src, Pos, Len);
     end;
 
     // Common index-write bound check + space-extension. C packs (idxReg * 4096 + MaxLen), where
@@ -4233,6 +5121,80 @@ codeunit 51132 "ALI Interpreter"
             TrackLocalHandle(Kind, Handle);
     end;
 
+    // ===== TextBuilder / BigText bank helpers (cold paths: New/Free/Clear + checked slot fetch) =====
+
+    // Allocate (or reuse) a TextBuilder handle. NewBuilder is a LOCAL so each Add gets a genuinely
+    // distinct instance (a reused member var could hand the same builder to two slots).
+    local procedure TbNew(): Integer
+    var
+        H: Integer;
+        NewBuilder: TextBuilder;
+    begin
+        if TbFree.Count() > 0 then begin
+            H := TbFree.Get(TbFree.Count());
+            TbFree.RemoveAt(TbFree.Count());
+            exit(H);
+        end;
+        if TbBank.Count() >= 4096 then
+            Error('ALI970: too many concurrently live TextBuilder variables (max %1)', 4096);
+        TbBank.Add(NewBuilder);
+        exit(TbBank.Count());
+    end;
+
+    // Reclaim: replace the slot with a fresh builder (Clear on a fetched var only rebinds that
+    // var, so the cleared one is Set back) and recycle the handle.
+    local procedure TbRelease(H: Integer)
+    var
+        TB: TextBuilder;
+    begin
+        if (H < 1) or (H > TbBank.Count()) then
+            exit;
+        TbBank.Get(H, TB);
+        Clear(TB);
+        TbBank.Set(H, TB);
+        TbFree.Add(H);
+    end;
+
+    local procedure TbGetChecked(H: Integer)
+    begin
+        if (H < 1) or (H > TbBank.Count()) then
+            Error('ALI971: TextBuilder handle %1 out of range', H);
+        TbBank.Get(H, TbCur);
+    end;
+
+    local procedure BtNew(): Integer
+    var
+        H: Integer;
+        NewBig: BigText;
+    begin
+        if BtFree.Count() > 0 then begin
+            H := BtFree.Get(BtFree.Count());
+            BtFree.RemoveAt(BtFree.Count());
+            exit(H);
+        end;
+        if BtBank.Count() >= 4096 then
+            Error('ALI992: too many concurrently live BigText variables (max %1)', 4096);
+        BtBank.Add(NewBig);
+        exit(BtBank.Count());
+    end;
+
+    // Clears the bank instance IN PLACE (clearing a fetched copy would only rebind it).
+    local procedure BtClear(H: Integer)
+    var
+        BT: BigText;
+    begin
+        BtGet(H, BT);
+        Clear(BT);
+        BtBank.Set(H, BT);
+    end;
+
+    local procedure BtGet(H: Integer; var BT: BigText)
+    begin
+        if (H < 1) or (H > BtBank.Count()) then
+            Error('ALI993: BigText handle %1 out of range', H);
+        BtBank.Get(H, BT);
+    end;
+
     // ===== M9 TextBuilder ops =====
     //
     // TB_METHOD: A = handle (ABSOLUTE, TextBuilder handle space), B = operand-pool start
@@ -4261,7 +5223,8 @@ codeunit 51132 "ALI Interpreter"
         // (IsGlobal packed into the low ArgCount digit, same trick as ARR_NEW/HTTP_METHOD New).
         if MethodId = 0 then begin
             IsGlobal := ArgCount mod 2;
-            ResultInt := TbRt.NewTb();
+            ResultInt := TbNew();
+
             if IsGlobal = 0 then
                 TrackLocalHandle("ALI TypeKind"::TextBuilder, ResultInt);
             if (OutCls > 0) and (OutReg > 0) then
@@ -4270,39 +5233,40 @@ codeunit 51132 "ALI Interpreter"
         end;
 
         HA := RegInt[CurBaseInt + A];
+        TbGetChecked(HA);
         case MethodId of
             1: // Append(Text)
-                TbRt.Append(HA, ArgAsText(B, 0));
+                TbCur.Append(ArgAsText(B, 0));
             2: // AppendLine()
-                TbRt.AppendLine(HA);
+                TbCur.AppendLine();
             3: // AppendLine(Text)
-                TbRt.AppendLineText(HA, ArgAsText(B, 0));
+                TbCur.AppendLine(ArgAsText(B, 0));
             4: // Capacity() -> Int
-                ResultInt := TbRt.GetCapacity(HA);
+                ResultInt := TbCur.Capacity();
             5: // Capacity(Int)
-                TbRt.SetCapacity(HA, ArgAsInt(B, 0));
+                TbCur.Capacity(ArgAsInt(B, 0));
             6: // Clear()
-                TbRt.ClearI(HA);
+                TbCur.Clear();
             7: // EnsureCapacity(Int)
-                TbRt.EnsureCapacity(HA, ArgAsInt(B, 0));
+                TbCur.EnsureCapacity(ArgAsInt(B, 0));
             8: // Insert(Int, Text)
-                TbRt.Insert(HA, ArgAsInt(B, 0), ArgAsText(B, 1));
+                TbCur.Insert(ArgAsInt(B, 0), ArgAsText(B, 1));
             9: // Length() -> Int
-                ResultInt := TbRt.GetLength(HA);
+                ResultInt := TbCur.Length();
             10: // Length(Int)
-                TbRt.SetLength(HA, ArgAsInt(B, 0));
+                TbCur.Length(ArgAsInt(B, 0));
             11: // MaxCapacity() -> Int
-                ResultInt := TbRt.MaxCapacity(HA);
+                ResultInt := TbCur.MaxCapacity();
             12: // Remove(Int, Int)
-                TbRt.Remove(HA, ArgAsInt(B, 0), ArgAsInt(B, 1));
+                TbCur.Remove(ArgAsInt(B, 0), ArgAsInt(B, 1));
             13: // Replace(Text, Text)
-                TbRt.Replace(HA, ArgAsText(B, 0), ArgAsText(B, 1));
+                TbCur.Replace(ArgAsText(B, 0), ArgAsText(B, 1));
             14: // Replace(Text, Text, Int, Int)
-                TbRt.ReplaceRange(HA, ArgAsText(B, 0), ArgAsText(B, 1), ArgAsInt(B, 2), ArgAsInt(B, 3));
+                TbCur.Replace(ArgAsText(B, 0), ArgAsText(B, 1), ArgAsInt(B, 2), ArgAsInt(B, 3));
             15: // ToText() -> Text
-                ResultText := TbRt.ToText(HA);
+                ResultText := TbCur.ToText();
             16: // ToText(Int, Int) -> Text
-                ResultText := TbRt.ToTextRange(HA, ArgAsInt(B, 0), ArgAsInt(B, 1));
+                ResultText := TbCur.ToText(ArgAsInt(B, 0), ArgAsInt(B, 1));
             else
                 Error('ALI951: invalid TextBuilder method id %1 at PC %2', MethodId, PC);
         end;
@@ -6299,25 +7263,25 @@ codeunit 51132 "ALI Interpreter"
         case TargetT of
             10: // Integer
                 begin
-                    Success := BSystem.TryEvaluateInt(SourceText, OkInt);
+                    Success := Evaluate(OkInt, SourceText);
                     if Success then
                         RegInt[TargetAbs] := OkInt;
                 end;
             11: // BigInteger
                 begin
-                    Success := BSystem.TryEvaluateBig(SourceText, OkBig);
+                    Success := Evaluate(OkBig, SourceText);
                     if Success then
                         RegBig[TargetAbs] := OkBig;
                 end;
             12: // Decimal
                 begin
-                    Success := BSystem.TryEvaluateDec(SourceText, OkDec);
+                    Success := Evaluate(OkDec, SourceText);
                     if Success then
                         RegDec[TargetAbs] := OkDec;
                 end;
             20: // Boolean
                 begin
-                    Success := BSystem.TryEvaluateBool(SourceText, OkBool);
+                    Success := Evaluate(OkBool, SourceText);
                     if Success then
                         RegBool[TargetAbs] := OkBool;
                 end;
@@ -6328,31 +7292,31 @@ codeunit 51132 "ALI Interpreter"
                 end;
             50: // Date
                 begin
-                    Success := BSystem.TryEvaluateDate(SourceText, OkDate);
+                    Success := Evaluate(OkDate, SourceText);
                     if Success then
                         RegDate[TargetAbs] := OkDate;
                 end;
             51: // Time
                 begin
-                    Success := BSystem.TryEvaluateTime(SourceText, OkTime);
+                    Success := Evaluate(OkTime, SourceText);
                     if Success then
                         RegTime[TargetAbs] := OkTime;
                 end;
             52: // DateTime
                 begin
-                    Success := BSystem.TryEvaluateDateTime(SourceText, OkDT);
+                    Success := Evaluate(OkDT, SourceText);
                     if Success then
                         RegDT[TargetAbs] := OkDT;
                 end;
             91: // RecordID
                 begin
-                    Success := BSystem.TryEvaluateRecordId(SourceText, OkRecId);
+                    Success := Evaluate(OkRecId, SourceText);
                     if Success then
                         RegRecordId[TargetAbs] := OkRecId;
                 end;
             54: // DateFormula
                 begin
-                    Success := BSystem.TryEvaluateDateFormula(SourceText, OkDF);
+                    Success := Evaluate(OkDF, SourceText);
                     if Success then
                         RegDateFormula[TargetAbs] := OkDF;
                 end;
@@ -6420,7 +7384,10 @@ codeunit 51132 "ALI Interpreter"
             "ALI TypeKind"::DateFormula:
                 Clear(RegDateFormula[TargetAbs]);
             "ALI TypeKind"::Array:
-                ArrayRt.ClearArray(RegInt[TargetAbs]);
+                begin
+                    ArrBlocks.Get(RegInt[TargetAbs], ArrBlk);
+                    ArrBlk.ClearArray();
+                end;
             "ALI TypeKind"::List:
                 ListRt.ClearList(RegInt[TargetAbs]);
             "ALI TypeKind"::Dictionary:
@@ -6435,9 +7402,12 @@ codeunit 51132 "ALI Interpreter"
                     FcBumpHandle(RegInt[TargetAbs]);    // PERF TEST — Clear + reopen
                 end;
             "ALI TypeKind"::TextBuilder:
-                TbRt.ClearI(RegInt[TargetAbs]);
+                begin
+                    TbGetChecked(RegInt[TargetAbs]);
+                    TbCur.Clear();
+                end;
             "ALI TypeKind"::BigText:
-                BigRt.ClearBt(RegInt[TargetAbs]);
+                BtClear(RegInt[TargetAbs]);
             "ALI TypeKind"::NativeCodeunit:
                 NativeRt.ResetInstance(RegInt[TargetAbs]);     // a fresh platform instance, same handle
             "ALI TypeKind"::HttpClient, "ALI TypeKind"::HttpRequestMessage, "ALI TypeKind"::HttpResponseMessage,
@@ -6579,6 +7549,243 @@ codeunit 51132 "ALI Interpreter"
 
     // Write a Variant (from FieldRef.Value) into a FRAME-RELATIVE register, converting to the
     // statically-known class (§7.5: one boxing per field access, native conversion here).
+    // Builtin name -> integer code for the Str/Math/DateTime arms of CALL_BUILTIN_LIVE, resolved
+    // once per BuiltinId into BMemoCode. A `case` on Text runs as a chain of string compares; on an
+    // Integer it is a jump table. Codes are the arm labels in RunLoopFlat (name in the comment
+    // there); 0 = unknown, which falls to each domain's ALI980 else branch.
+    local procedure BuiltinNameCode(NameUpper: Text): Integer
+    begin
+        case NameUpper of
+            'COPYSTR', 'SUBSTRING':
+                exit(1);
+            'STRLEN':
+                exit(2);
+            'STRPOS':
+                exit(3);
+            'STRSUBSTNO', 'SECRETSTRSUBSTNO':
+                exit(4);
+            'FORMAT':
+                exit(5);
+            'LOWERCASE', 'TOLOWER':
+                exit(6);
+            'UPPERCASE', 'TOUPPER':
+                exit(7);
+            'DELCHR':
+                exit(8);
+            'CONVERTSTR':
+                exit(9);
+            'PADSTR':
+                exit(10);
+            'INCSTR':
+                exit(11);
+            'SELECTSTR':
+                exit(12);
+            'DELSTR':
+                exit(13);
+            'INSSTR':
+                exit(14);
+            'STRCHECKSUM':
+                exit(15);
+            'TRIM':
+                exit(16);
+            'TRIMSTART':
+                exit(17);
+            'TRIMEND':
+                exit(18);
+            'REPLACE':
+                exit(19);
+            'CONTAINS':
+                exit(20);
+            'INDEXOF':
+                exit(21);
+            'LASTINDEXOF':
+                exit(22);
+            'INDEXOFANY':
+                exit(23);
+            'STARTSWITH':
+                exit(24);
+            'ENDSWITH':
+                exit(25);
+            'PADLEFT':
+                exit(26);
+            'PADRIGHT':
+                exit(27);
+            'REMOVE':
+                exit(28);
+            'ABS':
+                exit(29);
+            'ROUND':
+                exit(30);
+            'POWER':
+                exit(31);
+            'RANDOM':
+                exit(32);
+            'RANDOMIZE':
+                exit(33);
+            'TODAY':
+                exit(34);
+            'TIME':
+                exit(35);
+            'CURRENTDATETIME':
+                exit(36);
+            'WORKDATE':
+                exit(37);
+            'CALCDATE':
+                exit(38);
+            'DATE2DMY':
+                exit(39);
+            'DATE2DWY':
+                exit(40);
+            'DMY2DATE':
+                exit(41);
+            'DWY2DATE':
+                exit(42);
+            'CREATEDATETIME':
+                exit(43);
+            'DT2DATE':
+                exit(44);
+            'DT2TIME':
+                exit(45);
+            'CLOSINGDATE':
+                exit(46);
+            'NORMALDATE':
+                exit(47);
+            'ROUNDDATETIME':
+                exit(48);
+            'DATI2VARIANT':
+                exit(49);
+            'VARIANT2DATE':
+                exit(50);
+            'VARIANT2TIME':
+                exit(51);
+            'MESSAGE':
+                exit(52);
+            'ERROR':
+                exit(53);
+            'CONFIRM':
+                exit(54);
+            'STRMENU':
+                exit(55);
+            'SLEEP':
+                exit(56);
+            'COMMIT':
+                exit(57);
+            'GUIALLOWED':
+                exit(58);
+            'COMPANYNAME':
+                exit(59);
+            'USERID':
+                exit(60);
+            'USERSECURITYID':
+                exit(61);
+            'CREATEGUID':
+                exit(62);
+            'ISNULLGUID':
+                exit(63);
+            'EVALUATE':
+                exit(64);
+            'GETLASTERRORTEXT':
+                exit(65);
+            'GETLASTERRORCALLSTACK':
+                exit(66);
+            'GETLASTERROROBJECT':
+                exit(67);
+            'GETLASTERRORCODE':
+                exit(68);
+            'SELECTLATESTVERSION':
+                exit(69);
+            'CLEARLASTERROR':
+                exit(70);
+            'SESSIONID':
+                exit(71);
+            'GLOBALLANGUAGE':
+                exit(72);
+            'WINDOWSLANGUAGE':
+                exit(73);
+            'CLIENTTYPE', 'CURRENTCLIENTTYPE':
+                exit(74);
+            'CURRENTEXECUTIONMODE':
+                exit(75);
+            'COPYSTREAM':
+                exit(76);
+            'CLEAR':
+                exit(77);
+        end;
+        exit(0);
+    end;
+
+    // ===== §8 interception helpers for the System builtin arm (cold: dialogs/errors). They read
+    // the arm's own members BArgs/BArgCount and set BWarned/BWarningText — no argument copies. =====
+
+    // StrSubstNo(Args[1], Args[2..10]) — Message text and Error text share it.
+    local procedure SysFormatArgs(): Text
+    var
+        a: array[10] of Text;
+        i: Integer;
+    begin
+        if BArgCount = 0 then
+            exit('');
+        if BArgCount = 1 then
+            exit(Format(BArgs[1]));
+        for i := 2 to BArgCount do
+            if i - 1 <= 10 then
+                a[i - 1] := Format(BArgs[i]);
+        exit(StrSubstNo(Format(BArgs[1]), a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8], a[9]));
+    end;
+
+    // Raises a NATIVE error: the run loop's TryFunction boundary catches it like any other.
+    local procedure SysRaiseError()
+    var
+        a: array[10] of Text;
+        i: Integer;
+    begin
+        for i := 2 to BArgCount do
+            if i - 1 <= 10 then
+                a[i - 1] := Format(BArgs[i]);
+        Error(Format(BArgs[1]), a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8], a[9]);
+    end;
+
+    // Scripted answer from "ALI Run Options" (Interaction mode: 0 = warn on default, 1 = Error,
+    // 2 = Show a real dialog on a GUI host).
+    local procedure SysConfirm(): Boolean
+    var
+        Answer: Boolean;
+        Mode: Integer;
+    begin
+        Mode := RunOptions.GetInteractionMode();
+        if (Mode = 2) and GuiAllowed() then
+            exit(Confirm(SysFirstArgText(), false));
+        Answer := RunOptions.NextConfirmAnswer(BWarned);
+        if BWarned and (Mode = 1) then
+            Error('ALI972: Confirm(''%1'') has no scripted answer (Interaction mode = Error)', SysFirstArgText());
+        if BWarned then
+            BWarningText := StrSubstNo('ALI970: Confirm(''%1'') answered by unconfigured default (%2) — script an answer via ALI Run Options for deterministic runs', SysFirstArgText(), Format(Answer));
+        exit(Answer);
+    end;
+
+    local procedure SysStrMenu(): Integer
+    var
+        Answer: Integer;
+        Mode: Integer;
+    begin
+        Mode := RunOptions.GetInteractionMode();
+        if (Mode = 2) and GuiAllowed() then
+            exit(StrMenu(SysFirstArgText()));
+        Answer := RunOptions.NextStrMenuAnswer(BWarned);
+        if BWarned and (Mode = 1) then
+            Error('ALI973: StrMenu(''%1'') has no scripted answer (Interaction mode = Error)', SysFirstArgText());
+        if BWarned then
+            BWarningText := StrSubstNo('ALI971: StrMenu(''%1'') answered by unconfigured default (%2) — script an answer via ALI Run Options for deterministic runs', SysFirstArgText(), Answer);
+        exit(Answer);
+    end;
+
+    local procedure SysFirstArgText(): Text
+    begin
+        if BArgCount = 0 then
+            exit('');
+        exit(Format(BArgs[1]));
+    end;
+
     local procedure WriteRegisterFromVariant(Cls: Integer; Reg: Integer; V: Variant)
     begin
         case Cls of

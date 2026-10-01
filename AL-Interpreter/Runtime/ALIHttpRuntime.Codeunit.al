@@ -56,7 +56,7 @@ codeunit 51146 "ALI Http Runtime"
     end;
 
     // ===== Allocation / reclamation ("New"/Free — Free is called by "ALI Interpreter" on
-    // frame pop, mirroring "ALI Array Runtime".FreeBlock; see that codeunit's header for why a
+    // frame pop, mirroring "ALI Interpreter" ArrFreeIdx; see that codeunit's header for why a
     // freed slot is RECYCLED (pushed to a per-kind FreeIdx list) rather than removed from the
     // bank — RemoveAt would shift every later handle's index. Reuse-before-grow keeps a
     // recursive/looping script's bank bounded instead of growing once per call. ("New" ids

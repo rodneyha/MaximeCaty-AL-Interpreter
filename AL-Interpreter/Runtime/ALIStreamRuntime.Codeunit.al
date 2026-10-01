@@ -521,20 +521,16 @@ codeunit 51117 "ALI Stream Runtime"
     // same delegation shape as the Xml entry points above: the caller owns the object, this
     // runtime owns the only native stream and passes its slot `var`.
 
-    procedure BigTextRead(H: Integer; BtH: Integer)
-    var
-        BigRt: Codeunit "ALI BigText Runtime";
+    procedure BigTextRead(H: Integer; var BT: BigText)
     begin
         GuardIn(H);
-        BigRt.ReadFromStream(BtH, Ins[H]);
+        BT.Read(Ins[H]);
     end;
 
-    procedure BigTextWrite(H: Integer; BtH: Integer)
-    var
-        BigRt: Codeunit "ALI BigText Runtime";
+    procedure BigTextWrite(H: Integer; var BT: BigText)
     begin
         GuardOut(H);
-        BigRt.WriteToStream(BtH, Outs[H]);
+        BT.Write(Outs[H]);
     end;
 
     // Media.ExportStream(OutStream): copy the media payload out of Tenant Media (where the

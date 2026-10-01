@@ -30,7 +30,8 @@ codeunit 51115 "ALI Rec Runtime"
 {
     Access = Public;
 
-    // force permission on protected tables to write into
+    // force permission on protected tables to write into. KEEP IDENTICAL to the copy on
+    // "ALI Interpreter" (its inlined record opcodes run there) and to BuildProtectedTables below.
     Permissions = tabledata "Approval Entry" = rimd,
      tabledata "Bank Account Ledger Entry" = rimd,
      tabledata "Bank Account Statement Line" = rimd,
@@ -164,21 +165,29 @@ tabledata "Workflow Step Argument Archive" = rimd,
     // default, so a script writing a posted/ledger table fails with ALI983 unless the host opted
     // in. One dictionary lookup per write op (no SQL, no interpreter branch).
     local procedure CheckWriteAllowed(H: Integer)
+    begin
+        if not WriteAllowed(H) then
+            Error('ALI983: writing protected table %1 is not permitted in this execution context', RecRefs[H].Name());
+    end;
+
+    // Split out of CheckWriteAllowed so BindRec can snapshot it: every input is fixed for the
+    // life of an open handle (run options are set by the host before the run, temp-ness and
+    // table id by the open).
+    local procedure WriteAllowed(H: Integer): Boolean
     var
         RunOptions: Codeunit "ALI Run Options";
     begin
         if RunOptions.AllowProtectedWrite() then
-            exit;
+            exit(true);
         if RecRefs[H].IsTemporary() then    // temp rows never reach the database
-            exit;
+            exit(true);
         // Simulation writes are undone by the enclosing Codeunit.Run rollback and its COMMIT is
         // no-op'd (CommitBehavior::Ignore), so a dry run over posted/ledger tables can't persist.
         if RunOptions.IsSimulation() then
-            exit;
+            exit(true);
         if ProtectedTables.Count() = 0 then
             BuildProtectedTables();
-        if ProtectedTables.ContainsKey(RecRefs[H].Number()) then
-            Error('ALI983: writing protected table %1 is not permitted in this execution context', RecRefs[H].Name());
+        exit(not ProtectedTables.ContainsKey(RecRefs[H].Number()));
     end;
 
     // Keep in sync BY HAND with the Permissions property at the top of this codeunit.
@@ -477,7 +486,7 @@ tabledata "Workflow Step Argument Archive" = rimd,
     end;
 
     // Handle Lifecycle Unification: allocate (or reuse) a fresh record handle and open it on
-    // TableId — mirrors "ALI List Runtime".NewList/"ALI Array Runtime".NewBlock. Replaces the
+    // TableId — mirrors "ALI List Runtime".NewList/"ALI Interpreter".ArrNewBlock. Replaces the
     // old binder-sealed Allocate(N); a record var now gets a fresh handle at whichever proc
     // entry declares it (global or local — see Phase 3, fixes the recursion-sharing bug).
     procedure NewRec(TableId: Integer; IsTemp: Boolean; Origin: Integer): Integer
@@ -623,11 +632,6 @@ tabledata "Workflow Step Argument Archive" = rimd,
     procedure InitRec(H: Integer)
     begin
         RecRefs[H].Init();
-    end;
-
-    procedure ResetRec(H: Integer)
-    begin
-        RecRefs[H].Reset();
     end;
 
     // ===== CRUD =====
@@ -1186,11 +1190,45 @@ tabledata "Workflow Step Argument Archive" = rimd,
         FRef.Value(Value);
     end;
 
-    // PERF TEST — binds a FieldRef the interpreter caches per REC_FLD_LOAD/STORE site and reuses
-    // across rows ("ALI Interpreter" Fc* block). Remove together with that block.
-    procedure BindFieldRef(H: Integer; FieldNo: Integer; var FRef: FieldRef)
+    // Hands the interpreter an ALIAS of the bank slot, so its hot record opcodes (Next/Find/Init/
+    // Insert/field bind…) run on it with zero AL calls per op. RecordRef `:=` shares the
+    // underlying instance (cursor, filters, buffer) — asserted by the T90* tests in "ALI Record
+    // Tests". The alias goes stale on reopen/Clear/Copy, so the interpreter re-binds under the
+    // same FcHEpoch/FcGen stamp as its FieldRef cache.
+    procedure BindRec(H: Integer; var R: RecordRef)
     begin
-        FRef := RecRefs[H].Field(FieldNo);
+        GuardOpen(H);
+        R := RecRefs[H];
+    end;
+
+    // Same, plus what the inlined arms need to know without calling back per op:
+    // IsSecured = Find*/Count/IsEmpty must re-apply security filters (go through FindRec etc.);
+    // FastWrite = the write gate passes AND no blob stream is pending on this handle, so an
+    // inlined Insert/Modify/Delete skips CheckWriteAllowed + FlushPendingBlobs unchanged. Both
+    // are fixed while the handle stays open; a blob stream opened later is covered by the
+    // interpreter dropping its stamp on REC_BLOB_OUTSTREAM.
+    procedure BindRec(H: Integer; var R: RecordRef; var IsSecured: Boolean; var FastWrite: Boolean)
+    var
+        i: Integer;
+    begin
+        GuardOpen(H);
+        R := RecRefs[H];
+        IsSecured := Secured[H];
+        FastWrite := WriteAllowed(H);
+        if FastWrite then
+            for i := 1 to ArrayLen(PendingBlobRec) do
+                if PendingBlobRec[i] = H then
+                    FastWrite := false;
+    end;
+
+    // The write-op counters, by reference (Dictionary is a reference type), so the interpreter's
+    // inlined Insert/Modify/Delete bump them directly. Re-bind after every Reset(): Clear() may
+    // hand the global a fresh instance.
+    procedure BindOpCounters(var Ins: Dictionary of [Integer, Integer]; var Mdf: Dictionary of [Integer, Integer]; var Del: Dictionary of [Integer, Integer])
+    begin
+        Ins := InsertOps;
+        Mdf := ModifyOps;
+        Del := DeleteOps;
     end;
 
     procedure SetFieldValue(H: Integer; FieldNo: Integer; Value: Variant)
@@ -1211,14 +1249,6 @@ tabledata "Workflow Step Argument Archive" = rimd,
 
     // SetFilter(field, filterText): the general filter-expression form (as opposed to
     // SetRangeEq's single-value equality shortcut). FilterText is used as-is.
-    procedure SetFilterField(H: Integer; FieldNo: Integer; FilterText: Text)
-    var
-        FRef: FieldRef;
-    begin
-        FRef := RecRefs[H].Field(FieldNo);
-        FRef.SetFilter(FilterText);
-    end;
-
     // SetFilter(field, filterText, v1, ...): the %1-substitution form. Arity is spelled out
     // because AL has no way to splat a Variant array into SetFilter's variadic tail; the
     // values stay Variants so the platform applies its own filter-safe formatting (invariant
@@ -3223,7 +3253,14 @@ tabledata "Workflow Step Argument Archive" = rimd,
     local procedure GuardOpen(H: Integer)
     begin
         GuardHandle(H);
+        // The slot's history turns "not open" into a diagnosis: FREED (a frame pop / Close already
+        // reclaimed a handle something still holds — a lifecycle bug), or NEVER OPENED (the
+        // handle register was read before its REC_NEW ran). Origin: 1 proc local, 2 global,
+        // 3 RecordRef Open/GetTable/Duplicate, 0 never allocated.
         if not RecOpen[H] then
-            Error('ALI956: record variable used before it was opened (handle %1)', H);
+            if FreeIdx.Contains(H) then
+                Error('ALI956: record variable used after its slot was freed (handle %1, allocated as origin %2, %3 slot(s) in use)', H, RecOrigin[H], HandleCount - FreeIdx.Count())
+            else
+                Error('ALI956: record variable used before it was opened (handle %1, origin %2, %3 slot(s) allocated this run)', H, RecOrigin[H], HandleCount);
     end;
 }

@@ -15,7 +15,7 @@ var ALICodeEditor_bufferTabId = 0;  // id of the tab whose text the textarea hol
 var ALICodeEditor_menu = null;      // the one open dropdown, or null
 var ALICodeEditor_renaming = false; // an inline tab-rename input is on screen
 var ALICodeEditor_simulation = true; // exec mode from SetRunMode: true = writes rolled back
-var ALICodeEditor_preprocAvailable = true; // SetPreprocAvailable: off in a cloud build (no source to apply symbols to)
+var ALICodeEditor_preprocAvailable = false; // SetPreprocAvailable: off in a cloud build (no source to apply symbols to)
 
 // Every toolbar/tab action reaches AL through this one event; the Result pane declares no
 // trigger for it, hence skipIfNotDefined = true.

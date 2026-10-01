@@ -17,21 +17,15 @@ page 51103 "ALI Stored Scripts"
                 {
                     NotBlank = true;
                     ShowMandatory = true;
-                    ToolTip = 'Specifies the name the script is stored and reopened under.', Comment = 'Spécifie le nom sous lequel le script est enregistré et rouvert.';
                 }
-                field(Description; Rec.Description)
-                {
-                    ToolTip = 'Specifies what this script does, shown only in this list.', Comment = 'Spécifie ce que fait ce script, affiché uniquement dans cette liste.';
-                }
+                field(Description; Rec.Description) { }
                 field(SystemCreatedAt; Rec.SystemCreatedAt)
                 {
                     Editable = false;
-                    ToolTip = 'Specifies when the script was first saved.', Comment = 'Spécifie la date de premier enregistrement du script.';
                 }
                 field(SystemModifiedAt; Rec.SystemModifiedAt)
                 {
                     Editable = false;
-                    ToolTip = 'Specifies when the script was last saved.', Comment = 'Spécifie la date du dernier enregistrement du script.';
                 }
             }
         }

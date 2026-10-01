@@ -1,6 +1,6 @@
 // ALI Array Block — storage contract for one interpreter array instance, backed by a native
 // AL array of Variant (ArrayNativeBlockPlan.md). One implementing codeunit per fixed tier
-// (S/M/L), each carrying an `array[Cap] of Variant`. "ALI Array Runtime" owns the instances
+// (S/M/L), each carrying an `array[Cap] of Variant`. "ALI Interpreter" (array block bank) owns the instances
 // (List of [Interface], handle = 1-based index) and picks the tier by TotalN; nothing else
 // touches a block directly.
 interface "ALI Array Block"

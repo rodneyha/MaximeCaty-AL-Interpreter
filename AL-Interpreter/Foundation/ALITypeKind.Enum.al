@@ -120,7 +120,7 @@ enum 51109 "ALI TypeKind"
     // leak-prevention only, which is the same guarantee native AL's compiler gives. ---
     value(118; SecretText) { }
 
-    // --- BigText: mutable text buffer, own flat handle bank in "ALI BigText Runtime" (same
+    // --- BigText: mutable text buffer, own flat handle bank in "ALI Interpreter" (BtBank) (same
     // scheme as TextBuilder — List of [BigText], RegClassFor -> RegClassInt, per-proc-entry
     // fresh handle, freed on frame pop). ---
     value(119; BigText) { }

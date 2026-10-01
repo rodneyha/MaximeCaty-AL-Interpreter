@@ -67,6 +67,8 @@ controladdin "ALI Code Editor"
 
     procedure SetReadOnly(ReadOnly: Boolean)
 
+    procedure SetPreprocAvailable(Available: Boolean)
+
     // JSON array of {line, col, len, sev, msg} (1-based line/col, sev: 2=error 1=warning).
     // Draws wavy underlines under the ranges; hovering a range shows msg. '[]' clears.
     procedure SetDiagnostics(DiagJson: Text)
@@ -79,11 +81,6 @@ controladdin "ALI Code Editor"
     // { types: [..], builtins: [{n,min,max,r,p,ok}], methods: { TypeName: [{n,s,r}] } }.
     // Replaces the JS-hardcoded type/proc lists so completion always matches the interpreter.
     procedure SetApiCatalog(CatalogJson: Text)
-
-    // Whether the "Preprocessor directives..." entry belongs in the Run menu. Off in a cloud
-    // build, where there is no published-object source for those symbols to apply to and the
-    // page behind the entry does not exist — see table "ALI Preproc Symbol".
-    procedure SetPreprocAvailable(Available: Boolean)
 
     // All table names for `MyRec: Record <completion>`: [{n: Name, id: ID}, ...].
     procedure SetTableList(TablesJson: Text)

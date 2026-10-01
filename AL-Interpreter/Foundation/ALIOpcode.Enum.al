@@ -263,7 +263,7 @@ enum 51105 "ALI Opcode"
 
     // ===== Family 8 (256..287): arrays (M6, re-encoded §20 handle-based multidim) + stream
     // RefShim ops (§19.7). An array VALUE is now an Int handle (like List/Dict, §20.2/20.3) —
-    // element storage moved to "ALI Array Runtime"; ARR_LOAD/STORE decode the handle to a
+    // element storage moved to "ALI Interpreter" (array block bank); ARR_LOAD/STORE decode the handle to a
     // block base + TotalN and take an already-computed FLAT index register (§20.7 row-major
     // fold, done by the lowerer with per-dimension bounds via ARR_DIM_CHECK below). Ordinals
     // are NOT yet frozen (M8 benchmark pending, see header) — re-encoded in place rather than
@@ -440,7 +440,7 @@ enum 51105 "ALI Opcode"
     // array local/global) and by LowerArrayLoad/Store (one ARR_DIM_CHECK per index BEFORE the
     // flat-index fold, so a wrong i_k always raises even if the folded flat index would still
     // land in range — see plan §20.7 option (b)). =====
-    value(367; ARR_NEW) { }         // A = dest int reg (fresh handle; stored via StoreToSym like LIST_NEW), B = ElemClass (RegClass ordinal 1..10), C = TotalN*2 + IsGlobal(0/1) — mirrors "ALI Array Runtime".NewBlock
+    value(367; ARR_NEW) { }         // A = dest int reg (fresh handle; stored via StoreToSym like LIST_NEW), B = ElemClass (RegClass ordinal 1..10), C = TotalN*2 + IsGlobal(0/1) — mirrors "ALI Interpreter".ArrNewBlock
     value(368; ARR_DIM_CHECK) { }   // A = index reg (frame-relative), B = dimension size Nk (compile-time constant), C = 1-based dimension number (for the error message). Native-bounds-checks index 1..Nk, raises ALI957 naming the dimension.
     value(369; REC_FILTERGROUP_GET) { }
     value(370; REC_FILTERGROUP_SET) { }
@@ -517,6 +517,9 @@ enum 51105 "ALI Opcode"
     value(426; BT_GE_I_IMM_BACK) { }
     value(427; ADD_I_IMM) { }           // IntReg[A] := IntReg[B] + C (C = immediate value)
     value(428; SUB_I_IMM) { }           // IntReg[A] := IntReg[B] - C
+    value(475; MUL_I_IMM) { }           // IntReg[A] := IntReg[B] * C (native overflow)
+    value(476; DIV_I_IMM) { }           // IntReg[A] := IntReg[B] div C (C = 0 raises natively)
+    value(477; MOD_I_IMM) { }           // IntReg[A] := IntReg[B] mod C
     value(429; CMP_EQ_I_IMM) { }        // BoolReg[A] := IntReg[B] = C (C = immediate value)
     value(430; CMP_NE_I_IMM) { }
     value(431; CMP_LT_I_IMM) { }

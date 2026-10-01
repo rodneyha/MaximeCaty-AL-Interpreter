@@ -4,7 +4,7 @@
 // This codeunit holds the actual backing storage: ONE bank PER register class (Integer,
 // BigInteger, Decimal, Boolean, Text, Date, Time, DateTime, Duration, Guid). Each bank is a
 // `List of [List of [T]]` (never a fixed array of [T]) — the same reference-aliasing
-// concern documented in "ALI TextBuilder Runtime"'s header: a List element that is ITSELF a
+// concern documented in "ALI Interpreter" TbBank's header: a List element that is ITSELF a
 // reference type only gets a genuinely distinct backing instance via `.Add()`.
 //
 // Handle encoding: handle = classIndex*HANDLE_STRIDE + bankIndex (bankIndex 1-based within

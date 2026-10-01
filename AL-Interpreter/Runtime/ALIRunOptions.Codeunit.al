@@ -7,7 +7,7 @@
 // possible" behavior: Confirm defaults to the caller-chosen DefaultConfirmAnswer (false
 // unless scripted), StrMenu defaults to 0 (Cancel), both recording an ALI9xx runtime
 // warning through the caller (interpreter reads Warned* flags after each call — see
-// "ALI Builtin System").
+// "ALI Interpreter" System builtin arm).
 //
 // SingleInstance mirrors "ALI Interpreter" (also single-instance) so options set by a host
 // before Run() are visible without threading a var-param through every builtin call.

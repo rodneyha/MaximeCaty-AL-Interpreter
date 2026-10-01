@@ -1048,15 +1048,15 @@ codeunit 51113 "ALI Lowerer"
                         if Ast.GetSymbolId(TargetNode) <= FieldRefMethodMark() then
                             LowerFieldRefPropertyStore(Tokens, Ast, Symbols, Module, TargetNode, SourceNode)
                         else
-                        if Ast.GetSymbolId(TargetNode) <= HttpMethodMark() then
-                            LowerHttpPropertyStore(Tokens, Ast, Symbols, Module, TargetNode, SourceNode)
-                        else
-                            // `inStr.Position := n` — StreamMethodMark(-2000) range, checked
-                            // AFTER Http (whose marks are more negative and would match too).
-                            if Ast.GetSymbolId(TargetNode) <= StreamMethodMark() then
-                                LowerStreamPropertyStore(Tokens, Ast, Symbols, Module, TargetNode, SourceNode)
+                            if Ast.GetSymbolId(TargetNode) <= HttpMethodMark() then
+                                LowerHttpPropertyStore(Tokens, Ast, Symbols, Module, TargetNode, SourceNode)
                             else
-                                LowerFieldStore(Tokens, Ast, Symbols, Module, TargetNode, SourceNode);
+                                // `inStr.Position := n` — StreamMethodMark(-2000) range, checked
+                                // AFTER Http (whose marks are more negative and would match too).
+                                if Ast.GetSymbolId(TargetNode) <= StreamMethodMark() then
+                                    LowerStreamPropertyStore(Tokens, Ast, Symbols, Module, TargetNode, SourceNode)
+                                else
+                                    LowerFieldStore(Tokens, Ast, Symbols, Module, TargetNode, SourceNode);
                         exit;
                     end;
                 "ALI NodeKind"::IndexExpr:
@@ -1844,59 +1844,59 @@ codeunit 51113 "ALI Lowerer"
                         // `Sid <= X` family cascade below could never match -500 anyway.
                         LowerObjectCall(Tokens, Ast, Symbols, Module, Node, true, OutCls, OutReg)
                     else
-                    if Sid = CodeunitRunMark() then      // M11 phase C3 — `ok := Codeunit.Run(...)`
-                        LowerCodeunitRun(Tokens, Ast, Symbols, Module, Node, true, OutCls, OutReg)
-                    else
-                        // FieldRef/KeyRef(-16000) checked FIRST — most negative mark — then
-                        // RecordRef(-15000), Media (-14000), BigText/Secret(-13000),
-                        // Xml(-12000), Blob(-11000), Json(-10000), HttpMethodMark(-9000),
-                        // RecordIdMethodMark(-7000), DictMethodMark(-6000),
-                        // ListMethodMark(-5000), TextBuilderMethodMark(-4000).
-                        if Sid <= FieldRefMethodMark() then
-                            LowerFieldRefMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                        if Sid = CodeunitRunMark() then      // M11 phase C3 — `ok := Codeunit.Run(...)`
+                            LowerCodeunitRun(Tokens, Ast, Symbols, Module, Node, true, OutCls, OutReg)
                         else
-                        if Sid <= RecordRefMethodMark() then
-                            LowerRecordRefMethod(Tokens, Ast, Symbols, Module, Node, true, OutCls, OutReg)
-                        else
-                        if Sid <= MediaMethodMark() then
-                            LowerMediaMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
-                        else
-                            if Sid <= BigTextMethodMark() then
-                                LowerBigTextMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                            // FieldRef/KeyRef(-16000) checked FIRST — most negative mark — then
+                            // RecordRef(-15000), Media (-14000), BigText/Secret(-13000),
+                            // Xml(-12000), Blob(-11000), Json(-10000), HttpMethodMark(-9000),
+                            // RecordIdMethodMark(-7000), DictMethodMark(-6000),
+                            // ListMethodMark(-5000), TextBuilderMethodMark(-4000).
+                            if Sid <= FieldRefMethodMark() then
+                                LowerFieldRefMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
                             else
-                                if Sid <= XmlMethodMark() then
-                                    LowerXmlMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                if Sid <= RecordRefMethodMark() then
+                                    LowerRecordRefMethod(Tokens, Ast, Symbols, Module, Node, true, OutCls, OutReg)
                                 else
-                                    if Sid <= BlobMethodMark() then
-                                        LowerBlobMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                    if Sid <= MediaMethodMark() then
+                                        LowerMediaMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
                                     else
-                                        if Sid <= JsonMethodMark() then
-                                            LowerJsonMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                        if Sid <= BigTextMethodMark() then
+                                            LowerBigTextMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
                                         else
-                                            if Sid <= HttpMethodMark() then
-                                                LowerHttpMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                            if Sid <= XmlMethodMark() then
+                                                LowerXmlMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
                                             else
-                                                if Sid <= RecordIdMethodMark() then
-                                                    LowerRecordIdMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                                if Sid <= BlobMethodMark() then
+                                                    LowerBlobMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
                                                 else
-                                                    if Sid <= DictMethodMark() then
-                                                        LowerDictMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                                    if Sid <= JsonMethodMark() then
+                                                        LowerJsonMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
                                                     else
-                                                        if Sid <= ListMethodMark() then
-                                                            LowerListMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                                        if Sid <= HttpMethodMark() then
+                                                            LowerHttpMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
                                                         else
-                                                            if Sid <= TextBuilderMethodMark() then
-                                                                LowerTextBuilderMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                                            if Sid <= RecordIdMethodMark() then
+                                                                LowerRecordIdMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
                                                             else
-                                                                // BuiltinCallMark(-3000) checked next — more negative than Stream(-2000).
-                                                                if Sid <= BuiltinCallMark() then
-                                                                    LowerBuiltinCall(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                                                if Sid <= DictMethodMark() then
+                                                                    LowerDictMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
                                                                 else
-                                                                    if Sid <= StreamMethodMark() then
-                                                                        LowerStreamMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                                                    if Sid <= ListMethodMark() then
+                                                                        LowerListMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
                                                                     else
-                                                                        if Sid <= RecMethodMark() then
-                                                                            LowerRecordMethod(Tokens, Ast, Symbols, Module, Node, true, OutCls, OutReg);
+                                                                        if Sid <= TextBuilderMethodMark() then
+                                                                            LowerTextBuilderMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                                                        else
+                                                                            // BuiltinCallMark(-3000) checked next — more negative than Stream(-2000).
+                                                                            if Sid <= BuiltinCallMark() then
+                                                                                LowerBuiltinCall(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                                                            else
+                                                                                if Sid <= StreamMethodMark() then
+                                                                                    LowerStreamMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                                                                else
+                                                                                    if Sid <= RecMethodMark() then
+                                                                                        LowerRecordMethod(Tokens, Ast, Symbols, Module, Node, true, OutCls, OutReg);
             (K = "ALI NodeKind"::MemberAccessExpr):
                 // A bare member method without parens (`x := Tb.Length`, `n := L.Count`,
                 // `x := Resp.HttpStatusCode`, `Rec.FindSet`, `id.TableNo`) is marked with the
@@ -1907,63 +1907,63 @@ codeunit 51113 "ALI Lowerer"
                 if Sid = ObjectCallMark() then       // M11 paren-less object-procedure call
                     LowerObjectCall(Tokens, Ast, Symbols, Module, Node, true, OutCls, OutReg)
                 else
-                if Sid = CodeunitRunMark() then      // M11 phase C3 — `ok := MyCU.Run`
-                    LowerCodeunitRun(Tokens, Ast, Symbols, Module, Node, true, OutCls, OutReg)
-                else
-                    // M11 phase C2: paren-less codeunit-procedure call as a VALUE (`x := MyCU.Total`).
-                    // A positive SymbolId on a member access is only ever this — the other families
-                    // all mark themselves negative — and it is an ordinary receiver-less call.
-                    if Sid > 0 then
-                        LowerCall(Tokens, Ast, Symbols, Module, Node, true, 0, 0, OutCls, OutReg)
+                    if Sid = CodeunitRunMark() then      // M11 phase C3 — `ok := MyCU.Run`
+                        LowerCodeunitRun(Tokens, Ast, Symbols, Module, Node, true, OutCls, OutReg)
                     else
-                        // FieldRef/KeyRef(-16000) is the most negative mark — checked first here
-                        // too, then RecordRef(-15000).
-                        if Sid <= FieldRefMethodMark() then
-                            LowerFieldRefMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                        // M11 phase C2: paren-less codeunit-procedure call as a VALUE (`x := MyCU.Total`).
+                        // A positive SymbolId on a member access is only ever this — the other families
+                        // all mark themselves negative — and it is an ordinary receiver-less call.
+                        if Sid > 0 then
+                            LowerCall(Tokens, Ast, Symbols, Module, Node, true, 0, 0, OutCls, OutReg)
                         else
-                        if Sid <= RecordRefMethodMark() then
-                            LowerRecordRefMethod(Tokens, Ast, Symbols, Module, Node, true, OutCls, OutReg)
-                        else
-                        if Sid <= MediaMethodMark() then
-                            LowerMediaMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
-                        else
-                            if Sid <= BigTextMethodMark() then
-                                LowerBigTextMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                            // FieldRef/KeyRef(-16000) is the most negative mark — checked first here
+                            // too, then RecordRef(-15000).
+                            if Sid <= FieldRefMethodMark() then
+                                LowerFieldRefMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
                             else
-                                if Sid <= XmlMethodMark() then
-                                    LowerXmlMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                if Sid <= RecordRefMethodMark() then
+                                    LowerRecordRefMethod(Tokens, Ast, Symbols, Module, Node, true, OutCls, OutReg)
                                 else
-                                    if Sid <= BlobMethodMark() then
-                                        LowerBlobMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                    if Sid <= MediaMethodMark() then
+                                        LowerMediaMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
                                     else
-                                        if Sid <= JsonMethodMark() then
-                                            LowerJsonMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                        if Sid <= BigTextMethodMark() then
+                                            LowerBigTextMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
                                         else
-                                            if Sid <= HttpMethodMark() then
-                                                LowerHttpMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                            if Sid <= XmlMethodMark() then
+                                                LowerXmlMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
                                             else
-                                                if Sid <= RecordIdMethodMark() then
-                                                    LowerRecordIdMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                                if Sid <= BlobMethodMark() then
+                                                    LowerBlobMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
                                                 else
-                                                    if Sid <= DictMethodMark() then
-                                                        LowerDictMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                                    if Sid <= JsonMethodMark() then
+                                                        LowerJsonMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
                                                     else
-                                                        if Sid <= ListMethodMark() then
-                                                            LowerListMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                                        if Sid <= HttpMethodMark() then
+                                                            LowerHttpMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
                                                         else
-                                                            if Sid <= TextBuilderMethodMark() then
-                                                                LowerTextBuilderMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                                            if Sid <= RecordIdMethodMark() then
+                                                                LowerRecordIdMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
                                                             else
-                                                                if Sid <= BuiltinCallMark() then
-                                                                    LowerBuiltinCall(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                                                if Sid <= DictMethodMark() then
+                                                                    LowerDictMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
                                                                 else
-                                                                    if Sid <= StreamMethodMark() then
-                                                                        LowerStreamMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                                                    if Sid <= ListMethodMark() then
+                                                                        LowerListMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
                                                                     else
-                                                                        if Sid <= RecMethodMark() then
-                                                                            LowerRecordMethod(Tokens, Ast, Symbols, Module, Node, true, OutCls, OutReg)
+                                                                        if Sid <= TextBuilderMethodMark() then
+                                                                            LowerTextBuilderMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
                                                                         else
-                                                                            LowerFieldLoad(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg);
+                                                                            if Sid <= BuiltinCallMark() then
+                                                                                LowerBuiltinCall(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                                                            else
+                                                                                if Sid <= StreamMethodMark() then
+                                                                                    LowerStreamMethod(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg)
+                                                                                else
+                                                                                    if Sid <= RecMethodMark() then
+                                                                                        LowerRecordMethod(Tokens, Ast, Symbols, Module, Node, true, OutCls, OutReg)
+                                                                                    else
+                                                                                        LowerFieldLoad(Tokens, Ast, Symbols, Module, Node, OutCls, OutReg);
             (K = "ALI NodeKind"::IndexExpr):
                 // The receiver's TypeOrd (bind-time annotation) tells array vs Text/Code apart
                 // — NOT Symbols.GetType(GetSymbolId(child0)), which only resolves for a plain
@@ -2266,17 +2266,18 @@ codeunit 51113 "ALI Lowerer"
         RReg := ConvertToType(Module, RCls, RReg, R);
         OutCls := TypeRules.RegClassFor(R);
         OutReg := AllocTemp(OutCls);
-        // P3: int + / - with a just-loaded literal operand folds into ADD_I_IMM/SUB_I_IMM
+        // P3: int + - * div mod with a just-loaded literal operand folds into its *_I_IMM form
         // (one dispatch instead of two; the immediate value lives in C, no pool read).
-        if (OutCls = "ALI Register Class"::Int) and ((Group = "ALI Op Group"::"Add") or (Group = "ALI Op Group"::Sub)) then
-            if TryEmitArithIntImm(Module, Group, OutReg, LReg, RReg) then
-                exit;
+        if OutCls = "ALI Register Class"::Int then
+            if Group in ["ALI Op Group"::"Add", "ALI Op Group"::Sub, "ALI Op Group"::Mul, "ALI Op Group"::IDiv, "ALI Op Group"::"Mod"] then
+                if TryEmitArithIntImm(Module, Group, OutReg, LReg, RReg) then
+                    exit;
         Module.AddInstr(ArithOpcode(OutCls, Group), OutReg, LReg, RReg);
     end;
 
-    // Fold `LOAD_CONST_I t ; ADD_I/SUB_I d, l, t` into one immediate-form instruction.
-    // Right-literal always folds; left-literal folds for + only (commutes — the temp was
-    // emitted solely for this operand). Returns false when no fold applies.
+    // Fold `LOAD_CONST_I t ; <op>_I d, l, t` into one immediate-form instruction.
+    // Right-literal always folds; left-literal folds for + and * only (they commute — the temp
+    // was emitted solely for this operand). Returns false when no fold applies.
     local procedure TryEmitArithIntImm(var Module: Codeunit "ALI Module"; Group: Integer; OutReg: Integer; LReg: Integer; RReg: Integer): Boolean
     var
         ImmOp: Integer;
@@ -2288,16 +2289,25 @@ codeunit 51113 "ALI Lowerer"
             exit(false);
         if Module.GetOp(LastPC) <> 43 then                      // LOAD_CONST_I
             exit(false);
-        ImmOp := 427;                                           // ADD_I_IMM
-        if Group = "ALI Op Group"::Sub then
-            ImmOp := 428;                                       // SUB_I_IMM
+        case Group of
+            "ALI Op Group"::Sub:
+                ImmOp := 428;                                   // SUB_I_IMM
+            "ALI Op Group"::Mul:
+                ImmOp := 475;                                   // MUL_I_IMM
+            "ALI Op Group"::IDiv:
+                ImmOp := 476;                                   // DIV_I_IMM
+            "ALI Op Group"::"Mod":
+                ImmOp := 477;                                   // MOD_I_IMM
+            else
+                ImmOp := 427;                                   // ADD_I_IMM
+        end;
         if Module.GetA(LastPC) = RReg then begin
             ImmVal := Module.GetConstInt(Module.GetB(LastPC));
             Module.RemoveLastInstr();
             Module.AddInstr(ImmOp, OutReg, LReg, ImmVal);
             exit(true);
         end;
-        if (Group = "ALI Op Group"::"Add") and (Module.GetA(LastPC) = LReg) then begin
+        if (Group in ["ALI Op Group"::"Add", "ALI Op Group"::Mul]) and (Module.GetA(LastPC) = LReg) then begin
             ImmVal := Module.GetConstInt(Module.GetB(LastPC));
             Module.RemoveLastInstr();
             Module.AddInstr(ImmOp, OutReg, RReg, ImmVal);

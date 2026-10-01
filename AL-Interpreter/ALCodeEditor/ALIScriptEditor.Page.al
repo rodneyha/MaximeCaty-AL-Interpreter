@@ -13,6 +13,7 @@ page 51101 "ALI Script Editor"
 {
     ApplicationArea = All;
     Caption = 'AL Script Editor';
+    AdditionalSearchTerms = 'AL Playground, AL Interpreter';
     PageType = Card;
     SourceTable = "ALI Stored Script";
     UsageCategory = Administration;
@@ -59,10 +60,11 @@ page 51101 "ALI Script Editor"
                             // read-only Result pane below never grows any.
                             Win.Open(LoadingMetadata);
                             CurrPage.SourceEditor.SetALLanguage(true);
-#if CLOUD
+
                             // No published-object source to apply project symbols to, and no page
                             // behind the entry — keep it out of the Run menu entirely.
-                            CurrPage.SourceEditor.SetPreprocAvailable(false);
+#if not CLOUD
+                            CurrPage.SourceEditor.SetPreprocAvailable(true);
 #endif
                             CurrPage.SourceEditor.SetApiCatalog(ApiCatalog.BuildCatalogJson());
                             CurrPage.SourceEditor.SetTableList(ApiCatalog.BuildTableListJson());
@@ -816,6 +818,12 @@ page 51101 "ALI Script Editor"
         Sb.Append(RunViaEngine(SourceCode, ForceCompile, CompileSucceeded));
         Window.Close();
 
+        // Wall time for the whole action. Subtract the compile + interpreter numbers reported
+        // above and what is left is instantiation/first-touch — big on a cold session, ~0 once
+        // Engine.Warmup() has run at page open.
+        Sb.AppendLine();
+        Out(Sb, "ALI Out Style"::Dim, StrSubstNo('Total duration : %1', CurrentDateTime() - ActionStart));
+
         if CompileSucceeded then begin
             if Rec."Show Record Ops" then begin
                 Sb.AppendLine('');
@@ -916,7 +924,7 @@ page 51101 "ALI Script Editor"
         // Verbose: quote the failing instruction in the result (line map lives in the bag).
         if (not Result.Succeeded()) and RunOpt.GetVerbose() and (Result.ErrorLine() >= 1) then
             Result.SetErrorSourceText(Diags.GetSourceLine(Result.ErrorLine()));
-        Out(Sb, "ALI Out Style"::Dim, StrSubstNo('Interpreter: %1 statement(s) executed (%2 ms)', Result.ExecutedStatements(), Result.DurationMs()));
+        Out(Sb, "ALI Out Style"::Dim, StrSubstNo('Interpreter: %1 loop iteration(s) & call(s) (%2 ms)', Result.ExecutedStatements(), Result.DurationMs()));
 
         Sb.AppendLine('');
         Out(Sb, "ALI Out Style"::Header, '=== Log ===');

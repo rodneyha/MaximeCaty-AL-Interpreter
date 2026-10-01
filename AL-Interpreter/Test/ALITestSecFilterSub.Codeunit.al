@@ -8,7 +8,7 @@ codeunit 51160 "ALI Test Sec Filter Sub"
 {
     EventSubscriberInstance = Manual;
 
-    [EventSubscriber(ObjectType::Codeunit, Codeunit::"ALI Record Security Filters", OnApplyRecordSecurityFilters, '', false, false)]
+    [EventSubscriber(ObjectType::Codeunit, Codeunit::"ALI Record Security Filters", OnApplyRecordSecurityFilters, '', false, false)]   
     local procedure RestrictTestCustomer(var RecordReference: RecordRef; var Reason: Text)
     var
         TestCust: Record "ALI Test Customer";
