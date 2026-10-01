@@ -16,7 +16,7 @@ No VS Code, no container, no publish cycle — type code, press **F5**, read the
 
 Typical uses: one-off **data fixes**, **investigation** of a live environment, trying an **AL concept** without a dev setup, and a **sandbox for AI-generated AL**.
 
-> ⚠️ runs **~10× slower than compiled AL** on pure logic (database work is native speed). It is a tool for scripts, fixes and investigation — not a replacement for extensions. See [Performance](#3-performance).
+> ⚠️ runs **slower than compiled AL** on pure logic (database work is native speed). Install v2.0.0.0 for improved speed. See [Performance](#3-performance).
 
 ## Install
 
@@ -113,8 +113,8 @@ The **Benchmark** action on the options page measures this on your own data usin
 
 | Customers | Native AL | ALI | ALI compile | Ratio |
 |---|---|---|---|---|
-| 10 000 | 86 ms | 901 ms | 20 ms | ×10.5 |
-| 100 000 | 768 ms | 8 833 ms | 17 ms | ×11.5 |
+| 10 000 | 86 ms | 645 ms | 20 ms | ×7.5 |
+| 100 000 | 768 ms | 5 606 ms | 17 ms | ×7.3 |
 
 ---
 
