@@ -105,7 +105,7 @@ Built to be driven by a small AI model, with secure defaults and output it can a
 
 ## 3. Performance
 
-**Expect ~10× the run time of native AL** on typical business logic (loops, sub procedures, text and collection work).
+**Expect ~7× the run time of native AL** on typical business logic (loops, sub procedures, text and collection work).
 
 Why: the interpreter itself is written in AL, so each script statement costs several real AL statements. Database work is *not* slowed down — reads, writes, filters and table triggers run natively and respect user permissions. The overhead sits on the surrounding logic; SQL-heavy scripts (a few large `FindSet` / `ModifyAll`) come much closer to native speed.
 
